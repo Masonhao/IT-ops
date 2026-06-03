@@ -1,1 +1,5 @@
 flask==3.0.0
+
+# 开发依赖（pre-commit hooks）
+# pip install pre-commit black isort flake8
+# pre-commit install
