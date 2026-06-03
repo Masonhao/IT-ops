@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}企业运维管理系统{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background: #f5f6fa; }
+        .sidebar { width: 240px; min-height: 100vh; background: #1a1a2e; position: fixed; left: 0; top: 0; z-index: 100; overflow-y: auto; }
+        .sidebar .nav-link { color: #b8c7d1; padding: 10px 18px; border-left: 3px solid transparent; font-size: 0.92rem; }
+        .sidebar .nav-link:hover, .sidebar .nav-link.active { background: #16213e; border-left-color: #00d2ff; color: #fff; }
+        .sidebar .nav-link i { margin-right: 8px; width: 20px; text-align: center; font-size: 1rem; }
+        .sidebar-header { padding: 18px 18px 14px; color: #fff; border-bottom: 1px solid #16213e; }
+        .sidebar-header h5 { margin: 0; font-weight: 700; font-size: 1.1rem; letter-spacing: 1px; }
+        .sidebar-header small { color: #6c8a9e; font-size: 0.75rem; }
+        .sidebar-section { padding: 12px 18px 4px; color: #4a6a8a; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; }
+        .main-content { margin-left: 240px; padding: 20px; min-height: 100vh; }
+        .top-bar { background: #fff; padding: 12px 24px; margin: -20px -20px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: center; }
+        .top-bar .page-title { font-size: 1.2rem; font-weight: 600; color: #1a1a2e; }
+        .user-info { font-size: 0.9rem; color: #4a6a8a; }
+        .user-info .name { color: #1a1a2e; font-weight: 600; }
+        .card { border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.07); border-radius: 8px; }
+        .stat-card { text-align: center; padding: 20px; }
+        .stat-card .stat-number { font-size: 2rem; font-weight: 700; }
+        .stat-card .stat-label { color: #7f8c8d; font-size: 0.9rem; }
+        .table th { background: #f8f9fa; font-weight: 600; white-space: nowrap; font-size: 0.85rem; }
+        .table td { font-size: 0.85rem; vertical-align: middle; }
+        .badge-status { font-size: 0.78rem; padding: 4px 8px; }
+        .action-btn { padding: 2px 8px; font-size: 0.78rem; }
+        .modal-lg { max-width: 800px; }
+        .search-bar { max-width: 280px; }
+        .filter-bar .form-select, .filter-bar .form-control { max-width: 150px; font-size: 0.85rem; }
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+        .sidebar::-webkit-scrollbar { width: 4px; }
+        .sidebar::-webkit-scrollbar-thumb { background: #2a2a4e; border-radius: 4px; }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- 侧边栏 -->
+    <nav class="sidebar" id="sidebar" style="display:none;">
+        <div class="sidebar-header">
+            <h5><i class="bi bi-gear-wide-connected"></i> 运维管理系统</h5>
+            <small>EnterpriseOps v1.0</small>
+        </div>
+        <div class="sidebar-section">资产管理</div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">
+                    <i class="bi bi-speedometer2"></i> 首页概览
+                </a>
+            </li>
+            <li class="nav-item" id="nav-asset">
+                <a class="nav-link {% if request.path == '/asset' %}active{% endif %}" href="/asset">
+                    <i class="bi bi-pc-display"></i> 资产台账
+                </a>
+            </li>
+            <li class="nav-item" id="nav-supplier">
+                <a class="nav-link {% if request.path == '/supplier' %}active{% endif %}" href="/supplier">
+                    <i class="bi bi-building"></i> 供应商
+                </a>
+            </li>
+            <li class="nav-item" id="nav-contract">
+                <a class="nav-link {% if request.path == '/contract' %}active{% endif %}" href="/contract">
+                    <i class="bi bi-file-earmark-text"></i> 合同管理
+                </a>
+            </li>
+            <li class="nav-item" id="nav-domain">
+                <a class="nav-link {% if request.path == '/domain' %}active{% endif %}" href="/domain">
+                    <i class="bi bi-globe2"></i> 域名管理
+                </a>
+            </li>
+            <li class="nav-item" id="nav-software">
+                <a class="nav-link {% if request.path == '/software' %}active{% endif %}" href="/software">
+                    <i class="bi bi-code-square"></i> 软件授权
+                </a>
+            </li>
+        </ul>
+        <div class="sidebar-section">运维管理</div>
+        <ul class="nav flex-column">
+            <li class="nav-item" id="nav-equipment">
+                <a class="nav-link {% if request.path == '/equipment' %}active{% endif %}" href="/equipment">
+                    <i class="bi bi-hdd-rack"></i> 设备台账
+                </a>
+            </li>
+            <li class="nav-item" id="nav-inspection">
+                <a class="nav-link {% if request.path == '/inspection' %}active{% endif %}" href="/inspection">
+                    <i class="bi bi-clipboard2-check"></i> 每日巡检
+                </a>
+            </li>
+            <li class="nav-item admin-only" id="nav-inspection-task" style="display:none;">
+                <a class="nav-link {% if request.path == '/inspection/tasks' %}active{% endif %}" href="/inspection/tasks">
+                    <i class="bi bi-calendar-check"></i> 巡检任务分配
+                </a>
+            </li>
+            <li class="nav-item" id="nav-worklog">
+                <a class="nav-link {% if request.path == '/worklog' %}active{% endif %}" href="/worklog">
+                    <i class="bi bi-journal-text"></i> 工作日志
+                </a>
+            </li>
+        </ul>
+        <div class="sidebar-section">报表管理</div>
+        <ul class="nav flex-column">
+            <li class="nav-item" id="nav-inventory">
+                <a class="nav-link {% if request.path == '/inventory' %}active{% endif %}" href="/inventory">
+                    <i class="bi bi-clipboard-check"></i> 盘点管理
+                </a>
+            </li>
+            <li class="nav-item" id="nav-alert">
+                <a class="nav-link {% if request.path == '/alert' %}active{% endif %}" href="/alert">
+                    <i class="bi bi-bell"></i> 到期预警
+                </a>
+            </li>
+            <li class="nav-item" id="nav-report">
+                <a class="nav-link {% if request.path == '/report' %}active{% endif %}" href="/report">
+                    <i class="bi bi-bar-chart-line"></i> 报表统计
+                </a>
+            </li>
+            <li class="nav-item" id="nav-report-daily">
+                <a class="nav-link {% if '/report/daily' in request.path %}active{% endif %}" href="/report/daily">
+                    <i class="bi bi-calendar-day"></i> 日报管理
+                </a>
+            </li>
+            <li class="nav-item" id="nav-report-weekly">
+                <a class="nav-link {% if '/report/weekly' in request.path %}active{% endif %}" href="/report/weekly">
+                    <i class="bi bi-calendar-week"></i> 周报管理
+                </a>
+            </li>
+            <li class="nav-item" id="nav-report-monthly">
+                <a class="nav-link {% if '/report/monthly' in request.path %}active{% endif %}" href="/report/monthly">
+                    <i class="bi bi-calendar-month"></i> 月报管理
+                </a>
+            </li>
+        </ul>
+        <div class="sidebar-section">系统管理</div>
+        <ul class="nav flex-column">
+            <li class="nav-item" id="nav-category">
+                <a class="nav-link {% if request.path == '/category' %}active{% endif %}" href="/category">
+                    <i class="bi bi-diagram-3"></i> 资产分类
+                </a>
+            </li>
+            <li class="nav-item" id="nav-user">
+                <a class="nav-link {% if request.path == '/user' %}active{% endif %}" href="/user">
+                    <i class="bi bi-people"></i> 用户管理
+                </a>
+            </li>
+            <li class="nav-item admin-only" id="nav-inspection-template" style="display:none;">
+                <a class="nav-link {% if request.path == '/inspection/templates' %}active{% endif %}" href="/inspection/templates">
+                    <i class="bi bi-sliders"></i> 巡检模板
+                </a>
+            </li>
+        </ul>
+    </nav>
+
+    <!-- 主内容区 -->
+    <div class="main-content" id="mainContent">
+        <!-- 顶部栏 -->
+        <div class="top-bar" id="topBar" style="display:none;">
+            <div class="page-title">{% block page_title %}企业运维管理系统{% endblock %}</div>
+            <div class="user-info">
+                <span class="name" id="headerUserName">--</span>
+                <span class="badge bg-secondary ms-1" id="headerUserRole" style="font-size:0.75rem;">--</span>
+                <a href="/logout" class="btn btn-sm btn-outline-secondary ms-2" style="font-size:0.8rem;">退出</a>
+            </div>
+        </div>
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Toast 通知 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.0/dist/jquery.min.js"></script>
+    <script>
+        // 权限控制模块显示
+        const MODULE_PERMS = {
+            'asset': 'nav-asset', 'category': 'nav-category', 'supplier': 'nav-supplier',
+            'contract': 'nav-contract', 'domain': 'nav-domain',
+            'equipment': 'nav-equipment', 'inspection': 'nav-inspection', 'worklog': 'nav-worklog',
+            'inventory': 'nav-inventory', 'alert': 'nav-alert', 'report': 'nav-report',
+            'report_daily': 'nav-report-daily', 'report_weekly': 'nav-report-weekly', 'report_monthly': 'nav-report-monthly',
+            'software': 'nav-software', 'user': 'nav-user'
+        };
+
+        // 通用工具函数
+        const STATUS_MAP = {
+            'in_stock': '<span class="badge bg-secondary badge-status">库存</span>',
+            'in_use': '<span class="badge bg-success badge-status">在用</span>',
+            'repair': '<span class="badge bg-warning badge-status">维修</span>',
+            'scrapped': '<span class="badge bg-danger badge-status">报废</span>',
+            'disposed': '<span class="badge bg-dark badge-status">已处置</span>'
+        };
+        const EQUIP_STATUS_MAP = {
+            'normal': '<span class="badge bg-success badge-status">正常</span>',
+            'warning': '<span class="badge bg-warning badge-status">告警</span>',
+            'fault': '<span class="badge bg-danger badge-status">故障</span>',
+            'off_line': '<span class="badge bg-secondary badge-status">离线</span>',
+            'retired': '<span class="badge bg-dark badge-status">退役</span>'
+        };
+        const WORK_TYPE_MAP = {
+            'inspection': '巡检', 'repair': '维修', 'change': '变更', 'communication': '沟通', 'other': '其他'
+        };
+        const EQUIP_TYPE_MAP = {
+            'network': '网络设备', 'security': '安全设备', 'server': '服务器', 'storage': '存储', 'wireless': '无线', 'other': '其他'
+        };
+
+        function showToast(message, type = 'success') {
+            const id = 'toast-' + Date.now();
+            const bg = type === 'success' ? 'bg-success' : type === 'danger' ? 'bg-danger' : 'bg-warning';
+            const html = `<div id="${id}" class="toast ${bg} text-white" role="alert"><div class="toast-body">${message}</div></div>`;
+            $('#toastContainer').append(html);
+            const toast = new bootstrap.Toast($(`#${id}`)[0], { delay: 3000 });
+            toast.show();
+            $(`#${id}`).on('hidden.bs.toast', function() { $(this).remove(); });
+        }
+
+        function formatCurrency(val) {
+            if (val === null || val === undefined) return '-';
+            return '¥' + Number(val).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function formatDate(val) {
+            return val || '-';
+        }
+
+        // 登录检查
+        function checkLogin() {
+            return $.get('/api/me').then(function(res) {
+                $('#sidebar').show();
+                $('#topBar').show();
+                $('#headerUserName').text(res.real_name || res.username);
+                $('#headerUserRole').text(res.role === 'admin' ? '管理员' : '工程师');
+                // 根据权限控制导航显示
+                const perms = res.permissions === 'all' ? Object.keys(MODULE_PERMS) : (res.permissions || '').split(',');
+                // 隐藏所有有权限的nav
+                $('.sidebar .nav-item').hide();
+                perms.forEach(function(p) {
+                    if (MODULE_PERMS[p]) {
+                        $('#' + MODULE_PERMS[p]).show();
+                    }
+                });
+                // 管理员始终显示用户管理和巡检管理
+                if (res.role === 'admin') {
+                    $('#nav-user').show();
+                    $('.admin-only').show();
+                }
+                return res;
+            }).catch(function() {
+                // 未登录，跳转到登录页
+                if (window.location.pathname !== '/login') {
+                    window.location.href = '/login';
+                }
+                return null;
+            });
+        }
+
+        // 页面加载时检查登录（非登录页）
+        $(function() {
+            if (window.location.pathname !== '/login') {
+                checkLogin();
+            }
+        });
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

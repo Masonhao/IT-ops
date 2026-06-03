@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block title %}设备台账 - 企业运维管理系统{% endblock %}
+{% block page_title %}设备台账{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+    <!-- 操作栏 -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap filter-bar">
+            <select class="form-select form-select-sm" id="filterType" onchange="loadData()">
+                <option value="">全部类型</option>
+                <option value="network">网络设备</option>
+                <option value="security">安全设备</option>
+                <option value="server">服务器</option>
+                <option value="storage">存储设备</option>
+                <option value="wireless">无线设备</option>
+                <option value="other">其他</option>
+            </select>
+            <select class="form-select form-select-sm" id="filterStatus" onchange="loadData()">
+                <option value="">全部状态</option>
+                <option value="normal">正常</option>
+                <option value="warning">告警</option>
+                <option value="fault">故障</option>
+                <option value="off_line">离线</option>
+                <option value="retired">退役</option>
+            </select>
+            <input type="text" class="form-control form-control-sm search-bar" id="searchInput" placeholder="搜索设备编号/名称/IP..." oninput="debounceSearch()">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showAddModal()">
+            <i class="bi bi-plus-lg"></i> 新增设备
+        </button>
+    </div>
+
+    <!-- 设备表格 -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0" id="dataTable">
+                    <thead>
+                        <tr>
+                            <th>设备编号</th>
+                            <th>设备名称</th>
+                            <th>类型</th>
+                            <th>品牌/型号</th>
+                            <th>IP地址</th>
+                            <th>责任人</th>
+                            <th>状态</th>
+                            <th>保修到期</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+            <div class="p-3" id="pagination"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增/编辑模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">新增设备</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">设备编号</label>
+                        <input type="text" class="form-control form-control-sm" id="editEquipNo" placeholder="自动生成">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">设备名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="editName" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">设备类型 <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" id="editEquipType" required>
+                            <option value="">请选择</option>
+                            <option value="network">网络设备</option>
+                            <option value="security">安全设备</option>
+                            <option value="server">服务器</option>
+                            <option value="storage">存储设备</option>
+                            <option value="wireless">无线设备</option>
+                            <option value="other">其他</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
+                        <select class="form-select form-select-sm" id="editStatus">
+                            <option value="normal">正常</option>
+                            <option value="warning">告警</option>
+                            <option value="fault">故障</option>
+                            <option value="off_line">离线</option>
+                            <option value="retired">退役</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">品牌</label>
+                        <input type="text" class="form-control form-control-sm" id="editBrand">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">型号</label>
+                        <input type="text" class="form-control form-control-sm" id="editModel">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">序列号</label>
+                        <input type="text" class="form-control form-control-sm" id="editSerialNo">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">管理IP</label>
+                        <input type="text" class="form-control form-control-sm" id="editMgmtIp" placeholder="管理地址">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">业务IP</label>
+                        <input type="text" class="form-control form-control-sm" id="editIpAddr" placeholder="业务地址">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">所在位置</label>
+                        <input type="text" class="form-control form-control-sm" id="editLocation">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">所属部门</label>
+                        <input type="text" class="form-control form-control-sm" id="editDepartment">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">责任人</label>
+                        <select class="form-select form-select-sm" id="editCustodianId">
+                            <option value="">请选择</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">采购日期</label>
+                        <input type="date" class="form-control form-control-sm" id="editPurchaseDate">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">保修到期</label>
+                        <input type="date" class="form-control form-control-sm" id="editWarrantyExpire">
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">详细参数</label>
+                        <textarea class="form-control form-control-sm" id="editSpecs" rows="3" placeholder="CPU/内存/硬盘/端口等详细参数..."></textarea>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">备注</label>
+                        <textarea class="form-control form-control-sm" id="editRemark" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveData()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPage = 1;
+let searchTimer = null;
+
+function debounceSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { currentPage = 1; loadData(); }, 400);
+}
+
+function loadData() {
+    const params = new URLSearchParams({
+        page: currentPage,
+        equip_type: $('#filterType').val(),
+        status: $('#filterStatus').val(),
+        keyword: $('#searchInput').val()
+    });
+    $.get('/api/equipment?' + params.toString()).done(function(data) {
+        renderTable(data);
+    });
+}
+
+function renderTable(data) {
+    const tbody = $('#tableBody').empty();
+    if (!data || data.length === 0) {
+        tbody.append('<tr><td colspan="9" class="text-center text-muted py-4">暂无数据</td></tr>');
+        $('#pagination').empty();
+        return;
+    }
+    data.forEach(function(item) {
+        const statusHtml = EQUIP_STATUS_MAP[item.status] || item.status;
+        const typeLabel = EQUIP_TYPE_MAP[item.equip_type] || item.equip_type;
+        tbody.append(`
+            <tr>
+                <td><small class="text-muted">${item.equip_no || '--'}</small></td>
+                <td><a href="javascript:void(0)" onclick="viewDetail(${item.id})" class="fw-bold text-decoration-none">${item.name}</a></td>
+                <td><span class="badge bg-info text-dark" style="font-size:0.75rem;">${typeLabel}</span></td>
+                <td>${item.brand || '--'} ${item.model || ''}</td>
+                <td><small>${item.ip_addr || '--'}</small></td>
+                <td>${item.custodian_name || '--'}</td>
+                <td>${statusHtml}</td>
+                <td><small class="${item.warranty_expire && item.warranty_expire < '$(new Date().toISOString().slice(0,10)' ? 'text-danger fw-bold' : ''}">${item.warranty_expire || '--'}</small></td>
+                <td>
+                    <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
+        `);
+    });
+}
+
+function loadUsers() {
+    $.get('/api/users').done(function(users) {
+        const sel = $('#editCustodianId').empty().append('<option value="">请选择</option>');
+        users.forEach(function(u) {
+            sel.append(`<option value="${u.id}">${u.real_name || u.username}</option>`);
+        });
+    });
+}
+
+function showAddModal() {
+    $('#editId').val('');
+    $('#editEquipNo').val('');
+    $('#editName').val('');
+    $('#editEquipType').val('');
+    $('#editStatus').val('normal');
+    $('#editBrand').val('');
+    $('#editModel').val('');
+    $('#editSerialNo').val('');
+    $('#editMgmtIp').val('');
+    $('#editIpAddr').val('');
+    $('#editLocation').val('');
+    $('#editDepartment').val('');
+    $('#editCustodianId').val('');
+    $('#editPurchaseDate').val('');
+    $('#editWarrantyExpire').val('');
+    $('#editSpecs').val('');
+    $('#editRemark').val('');
+    $('#modalTitle').text('新增设备');
+    loadUsers();
+    new bootstrap.Modal($('#editModal')[0]).show();
+}
+
+function editData(id) {
+    $.get('/api/equipment/' + id).done(function(item) {
+        $('#editId').val(item.id);
+        $('#editEquipNo').val(item.equip_no);
+        $('#editName').val(item.name);
+        $('#editEquipType').val(item.equip_type);
+        $('#editStatus').val(item.status);
+        $('#editBrand').val(item.brand || '');
+        $('#editModel').val(item.model || '');
+        $('#editSerialNo').val(item.serial_no || '');
+        $('#editMgmtIp').val(item.mgmt_ip || '');
+        $('#editIpAddr').val(item.ip_addr || '');
+        $('#editLocation').val(item.location || '');
+        $('#editDepartment').val(item.department || '');
+        $('#editCustodianId').val(item.custodian_id || '');
+        $('#editPurchaseDate').val(item.purchase_date || '');
+        $('#editWarrantyExpire').val(item.warranty_expire || '');
+        $('#editSpecs').val(item.specs || '');
+        $('#editRemark').val(item.remark || '');
+        $('#modalTitle').text('编辑设备');
+        loadUsers();
+        new bootstrap.Modal($('#editModal')[0]).show();
+    });
+}
+
+function viewDetail(id) {
+    // 简单弹窗显示详情
+    $.get('/api/equipment/' + id).done(function(item) {
+        const specs = item.specs ? `<pre style="font-size:0.8rem;white-space:pre-wrap;">${item.specs}</pre>` : '无';
+        const html = `
+            <div class="modal fade" id="detailModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header"><h5>设备详情 - ${item.name}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row g-2">
+                                <div class="col-md-6"><strong>设备编号：</strong>${item.equip_no}</div>
+                                <div class="col-md-6"><strong>类型：</strong>${EQUIP_TYPE_MAP[item.equip_type] || item.equip_type}</div>
+                                <div class="col-md-6"><strong>品牌/型号：</strong>${item.brand || '--'} ${item.model || '--'}</div>
+                                <div class="col-md-6"><strong>序列号：</strong>${item.serial_no || '--'}</div>
+                                <div class="col-md-6"><strong>管理IP：</strong>${item.mgmt_ip || '--'}</div>
+                                <div class="col-md-6"><strong>业务IP：</strong>${item.ip_addr || '--'}</div>
+                                <div class="col-md-6"><strong>位置：</strong>${item.location || '--'}</div>
+                                <div class="col-md-6"><strong>部门：</strong>${item.department || '--'}</div>
+                                <div class="col-md-6"><strong>状态：</strong>${EQUIP_STATUS_MAP[item.status] || item.status}</div>
+                                <div class="col-md-6"><strong>采购日期：</strong>${item.purchase_date || '--'}</div>
+                                <div class="col-md-6"><strong>保修到期：</strong>${item.warranty_expire || '--'}</div>
+                            </div>
+                            <hr><strong>详细参数：</strong>${specs}
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        $('body').append(html);
+        new bootstrap.Modal($('#detailModal')[0]).show();
+        $('#detailModal').on('hidden.bs.modal', function() { $(this).remove(); });
+    });
+}
+
+function saveData() {
+    const id = $('#editId').val();
+    const data = {
+        name: $('#editName').val(),
+        equip_type: $('#editEquipType').val(),
+        equip_no: $('#editEquipNo').val() || undefined,
+        brand: $('#editBrand').val() || undefined,
+        model: $('#editModel').val() || undefined,
+        serial_no: $('#editSerialNo').val() || undefined,
+        ip_addr: $('#editIpAddr').val() || undefined,
+        mgmt_ip: $('#editMgmtIp').val() || undefined,
+        location: $('#editLocation').val() || undefined,
+        department: $('#editDepartment').val() || undefined,
+        custodian_id: $('#editCustodianId').val() ? parseInt($('#editCustodianId').val()) : undefined,
+        status: $('#editStatus').val(),
+        purchase_date: $('#editPurchaseDate').val() || undefined,
+        warranty_expire: $('#editWarrantyExpire').val() || undefined,
+        specs: $('#editSpecs').val() || undefined,
+        remark: $('#editRemark').val() || undefined
+    };
+    if (!data.name || !data.equip_type) {
+        showToast('请填写设备名称和类型', 'warning');
+        return;
+    }
+    const req = id ? $.ajax({ url: '/api/equipment/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+                   : $.ajax({ url: '/api/equipment', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+    req.done(function() {
+        showToast(id ? '更新成功' : '新增成功');
+        bootstrap.Modal.getInstance($('#editModal')[0]).hide();
+        loadData();
+    }).fail(function(xhr) {
+        showToast(xhr.responseJSON?.error || '操作失败', 'danger');
+    });
+}
+
+function deleteData(id) {
+    if (!confirm('确定删除此设备？')) return;
+    $.ajax({ url: '/api/equipment/' + id, method: 'DELETE' }).done(function() {
+        showToast('删除成功');
+        loadData();
+    }).fail(function(xhr) {
+        showToast(xhr.responseJSON?.error || '删除失败', 'danger');
+    });
+}
+
+$(function() {
+    loadData();
+});
+</script>
+{% endblock %}

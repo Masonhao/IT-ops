@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+{% block title %}工作日志 - 企业运维管理系统{% endblock %}
+{% block page_title %}工作日志{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+    <!-- 操作栏 -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap filter-bar">
+            <input type="date" class="form-control form-control-sm" id="filterDate" value="" onchange="loadData()">
+            <select class="form-select form-select-sm" id="filterType" onchange="loadData()">
+                <option value="">全部类型</option>
+                <option value="inspection">巡检</option>
+                <option value="repair">维修</option>
+                <option value="change">变更</option>
+                <option value="communication">沟通</option>
+                <option value="other">其他</option>
+            </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showAddModal()">
+            <i class="bi bi-plus-lg"></i> 新增日志
+        </button>
+    </div>
+
+    <!-- 日志列表 -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0" id="dataTable">
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>标题</th>
+                            <th>类型</th>
+                            <th>耗时(分)</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增/编辑日志模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">新增工作日志</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">日期</label>
+                        <input type="date" class="form-control form-control-sm" id="editDate" value="">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">类型</label>
+                        <select class="form-select form-select-sm" id="editType">
+                            <option value="other">其他</option>
+                            <option value="inspection">巡检</option>
+                            <option value="repair">维修</option>
+                            <option value="change">变更</option>
+                            <option value="communication">沟通</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
+                        <select class="form-select form-select-sm" id="editStatus">
+                            <option value="draft">草稿</option>
+                            <option value="submitted">已提交</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">标题 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="editTitle" placeholder="简要描述今天做了什么...">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">详细内容</label>
+                        <textarea class="form-control form-control-sm" id="editContent" rows="4" placeholder="详细描述工作内容..."></textarea>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">关联设备 <small class="text-muted fw-normal">（可选）</small></label>
+                        <select class="form-select form-select-sm" id="editEquipSelect">
+                            <option value="">-- 请选择巡检任务中的设备 --</option>
+                        </select>
+                        <input type="hidden" id="editEquipIds">
+                        <div id="selectedEquipBadges" class="mt-1"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">关联巡检记录 <small class="text-muted fw-normal">（可选）</small></label>
+                        <select class="form-select form-select-sm" id="editInspectionSelect">
+                            <option value="">-- 请选择巡检任务 --</option>
+                        </select>
+                        <input type="hidden" id="editInspectionIds">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">耗时(分钟)</label>
+                        <input type="number" class="form-control form-control-sm" id="editDuration" value="0" min="0">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveData()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let myDevices = [];
+let myTaskRecords = [];
+
+function loadMyDevices() {
+    $.get('/api/inspection/tasks/my-devices').done(function(data) {
+        myDevices = data;
+        const sel = $('#editEquipSelect').empty().append('<option value="">-- 请选择巡检任务中的设备 --</option>');
+        data.forEach(function(d) {
+            const label = d.equip_no
+                ? `${d.equip_no} - ${d.equipment_name || '未命名'} (${EQUIP_TYPE_MAP[d.equip_type]||d.equip_type||'未知'})`
+                : `${d.equipment_name || '设备'+d.id} (${EQUIP_TYPE_MAP[d.equip_type]||d.equip_type||'未知'})`;
+            sel.append(`<option value="${d.id}">${label}</option>`);
+        });
+        // 如果有已保存的设备ID，回显选中
+        const savedIds = ($('#editEquipIds').val() || '').split(',').map(x=>x.trim()).filter(Boolean);
+        if (savedIds.length === 1) {
+            $('#editEquipSelect').val(savedIds[0]);
+        }
+        updateEquipBadges();
+    });
+}
+
+function loadMyTaskRecords() {
+    const date = $('#editDate').val();
+    $.get('/api/inspection/tasks/my-records?date=' + date).done(function(data) {
+        myTaskRecords = data;
+        const sel = $('#editInspectionSelect').empty().append('<option value="">-- 请选择巡检任务 --</option>');
+        data.forEach(function(r) {
+            const label = `${r.plan_date} ${r.task_name}${r.equipment_name?' — '+r.equipment_name:''} [${r.status==='completed'?'已完成':'待完成'}]`;
+            sel.append(`<option value="${r.id}">${label}</option>`);
+        });
+        // 回显已保存的巡检记录ID
+        const savedIds = ($('#editInspectionIds').val() || '').split(',').map(x=>x.trim()).filter(Boolean);
+        if (savedIds.length === 1) {
+            $('#editInspectionSelect').val(savedIds[0]);
+        }
+    });
+}
+
+function onEquipSelectChange() {
+    const val = $('#editEquipSelect').val();
+    $('#editEquipIds').val(val);
+    updateEquipBadges();
+}
+
+function updateEquipBadges() {
+    const badges = $('#selectedEquipBadges').empty();
+    const ids = ($('#editEquipIds').val() || '').split(',').map(x=>x.trim()).filter(Boolean);
+    ids.forEach(function(id) {
+        const dev = myDevices.find(d => String(d.id) === id);
+        const name = dev
+            ? (dev.equip_no ? `${dev.equip_no} - ${dev.equipment_name}` : dev.equipment_name)
+            : ('设备'+id);
+        badges.append(`<span class="badge bg-info text-dark me-1 mb-1">${name} <a href="#" onclick="clearEquipSelect();return false;" class="text-dark">×</a></span>`);
+    });
+}
+
+function clearEquipSelect() {
+    $('#editEquipSelect').val('');
+    $('#editEquipIds').val('');
+    updateEquipBadges();
+}
+
+function onInspectionSelectChange() {
+    const val = $('#editInspectionSelect').val();
+    $('#editInspectionIds').val(val);
+}
+
+function loadData() {
+    const params = new URLSearchParams({
+        date: $('#filterDate').val(),
+        work_type: $('#filterType').val()
+    });
+    $.get('/api/worklogs?' + params.toString()).done(function(data) {
+        renderTable(data);
+    });
+}
+
+function renderTable(data) {
+    const tbody = $('#tableBody').empty();
+    if (!data || data.length === 0) {
+        tbody.append('<tr><td colspan="6" class="text-center text-muted py-4">暂无工作日志</td></tr>');
+        return;
+    }
+    data.forEach(function(item) {
+        const typeLabel = WORK_TYPE_MAP[item.work_type] || item.work_type;
+        const statusBadge = item.status === 'submitted'
+            ? '<span class="badge bg-success badge-status">已提交</span>'
+            : '<span class="badge bg-secondary badge-status">草稿</span>';
+        tbody.append(`<tr>
+            <td>${item.log_date}</td>
+            <td><a href="javascript:void(0)" onclick="viewLog(${item.id})" class="fw-bold text-decoration-none">${item.title}</a></td>
+            <td><span class="badge bg-info text-dark" style="font-size:0.75rem;">${typeLabel}</span></td>
+            <td>${item.duration_minutes || 0}</td>
+            <td>${statusBadge}</td>
+            <td>
+                <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
+            </td>
+        </tr>`);
+    });
+}
+
+function showAddModal() {
+    $('#editId').val('');
+    $('#editDate').val(new Date().toISOString().slice(0,10));
+    $('#editType').val('other');
+    $('#editTitle').val('');
+    $('#editContent').val('');
+    $('#editEquipIds').val('');
+    $('#editInspectionIds').val('');
+    $('#editDuration').val('0');
+    $('#editStatus').val('draft');
+    $('#editEquipSelect').val('');
+    $('#editInspectionSelect').val('');
+    $('#selectedEquipBadges').empty();
+    $('#modalTitle').text('新增工作日志');
+    loadMyDevices();
+    loadMyTaskRecords();
+    new bootstrap.Modal($('#editModal')[0]).show();
+}
+
+function editData(id) {
+    $.get('/api/worklogs/' + id).done(function(item) {
+        $('#editId').val(item.id);
+        $('#editDate').val(item.log_date);
+        $('#editType').val(item.work_type);
+        $('#editTitle').val(item.title);
+        $('#editContent').val(item.content);
+        $('#editEquipIds').val(item.equipment_ids || '');
+        $('#editInspectionIds').val(item.inspection_ids || '');
+        $('#editDuration').val(item.duration_minutes || 0);
+        $('#editStatus').val(item.status);
+        $('#selectedEquipBadges').empty();
+        $('#modalTitle').text('编辑工作日志');
+        loadMyDevices();
+        loadMyTaskRecords();
+        new bootstrap.Modal($('#editModal')[0]).show();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '加载失败', 'danger'); });
+}
+
+function viewLog(id) {
+    $.get('/api/worklogs/' + id).done(function(item) {
+        let equipHtml = '';
+        if (item.equipments && item.equipments.length) {
+            equipHtml = '<h6 class="mt-2">关联设备：</h6><ul>' + item.equipments.map(e => `<li>${e.equip_no} - ${e.name} (${EQUIP_TYPE_MAP[e.equip_type]||''})</li>`).join('') + '</ul>';
+        }
+        let inspHtml = '';
+        if (item.inspections && item.inspections.length) {
+            inspHtml = '<h6>关联巡检：</h6><ul>' + item.inspections.map(i => `<li>${i.inspection_date} - ${i.equipment_name} (${i.status==='abnormal'?'异常':'正常'})</li>`).join('') + '</ul>';
+        }
+        const html = `<div class="modal fade" id="viewModal" tabindex="-1">
+            <div class="modal-dialog modal-lg"><div class="modal-content">
+                <div class="modal-header"><h5>日志详情 - ${item.title}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6"><strong>日期：</strong>${item.log_date}</div>
+                        <div class="col-md-6"><strong>类型：</strong>${WORK_TYPE_MAP[item.work_type]||item.work_type}</div>
+                        <div class="col-12"><strong>内容：</strong><p style="white-space:pre-wrap;">${item.content}</p></div>
+                        <div class="col-md-6"><strong>耗时：</strong>${item.duration_minutes||0} 分钟</div>
+                    </div>
+                    ${equipHtml}${inspHtml}
+                </div>
+            </div></div>
+        </div>`;
+        $('body').append(html);
+        new bootstrap.Modal($('#viewModal')[0]).show();
+        $('#viewModal').on('hidden.bs.modal', function() { $(this).remove(); });
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '加载失败', 'danger'); });
+}
+
+function saveData() {
+    const id = $('#editId').val();
+    const data = {
+        log_date: $('#editDate').val(),
+        work_type: $('#editType').val(),
+        title: $('#editTitle').val(),
+        content: $('#editContent').val(),
+        equipment_ids: $('#editEquipIds').val() || '',
+        inspection_ids: $('#editInspectionIds').val() || '',
+        duration_minutes: parseInt($('#editDuration').val()) || 0,
+        status: $('#editStatus').val()
+    };
+    if (!data.title) { showToast('请填写标题', 'warning'); return; }
+    const req = id ? $.ajax({ url: '/api/worklogs/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+                   : $.ajax({ url: '/api/worklogs', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+    req.done(function() {
+        showToast(id ? '更新成功' : '新增成功');
+        bootstrap.Modal.getInstance($('#editModal')[0]).hide();
+        loadData();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); });
+}
+
+function deleteData(id) {
+    if (!confirm('确定删除此工作日志？')) return;
+    $.ajax({ url: '/api/worklogs/' + id, method: 'DELETE' }).done(function() {
+        showToast('删除成功'); loadData();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); });
+}
+
+$(function() {
+    $('#filterDate').val(new Date().toISOString().slice(0,10));
+    loadData();
+
+    $('#editEquipSelect').on('change', onEquipSelectChange);
+    $('#editInspectionSelect').on('change', onInspectionSelectChange);
+    $('#editDate').on('change', function() {
+        loadMyTaskRecords();
+    });
+});
+</script>
+{% endblock %}

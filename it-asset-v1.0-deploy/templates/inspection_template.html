@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}巡检模板 - 企业运维管理系统{% endblock %}
+{% block page_title %}巡检模板{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+    <!-- 操作栏 -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select class="form-select form-select-sm" id="filterType" onchange="loadData()" style="width:160px;">
+                <option value="">全部设备类型</option>
+                <option value="network">网络设备</option>
+                <option value="security">安全设备</option>
+                <option value="server">服务器</option>
+                <option value="storage">存储</option>
+                <option value="wireless">无线</option>
+                <option value="other">其他</option>
+            </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showAddModal()">
+            <i class="bi bi-plus-lg"></i> 新增巡检项
+        </button>
+    </div>
+
+    <!-- 模板列表 -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0" id="dataTable">
+                    <thead>
+                        <tr>
+                            <th style="width:50px;">排序</th>
+                            <th>设备类型</th>
+                            <th>项目名称</th>
+                            <th>类型</th>
+                            <th>单位</th>
+                            <th>正常范围</th>
+                            <th>必填</th>
+                            <th>描述</th>
+                            <th style="width:100px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增/编辑模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">新增巡检项</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">设备类型 <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" id="editEquipType">
+                            <option value="network">网络设备</option>
+                            <option value="security">安全设备</option>
+                            <option value="server">服务器</option>
+                            <option value="storage">存储</option>
+                            <option value="wireless">无线</option>
+                            <option value="other">其他</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">项目名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="editItemName" placeholder="如：CPU利用率">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">输入类型</label>
+                        <select class="form-select form-select-sm" id="editItemType" onchange="onItemTypeChange()">
+                            <option value="checkbox">勾选框（是/否）</option>
+                            <option value="number">数值</option>
+                            <option value="text">文本</option>
+                            <option value="select">下拉选项</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">单位</label>
+                        <input type="text" class="form-control form-control-sm" id="editUnit" placeholder="如：%, °C, Mbps">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">正常范围</label>
+                        <input type="text" class="form-control form-control-sm" id="editNormalRange" placeholder="如：<80, 40-60, 正常">
+                        <small class="text-muted">数值型用于自动异常判断</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">排序</label>
+                        <input type="number" class="form-control form-control-sm" id="editSortOrder" value="0">
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="editIsRequired" checked>
+                            <label class="form-check-label" for="editIsRequired" style="font-size:0.85rem;">必填项</label>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">描述</label>
+                        <textarea class="form-control form-control-sm" id="editItemDesc" rows="2" placeholder="巡检项目的详细说明..."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveData()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ITEM_TYPE_MAP = { 'checkbox': '勾选框', 'number': '数值', 'text': '文本', 'select': '下拉' };
+
+function loadData() {
+    const params = new URLSearchParams();
+    const type = $('#filterType').val();
+    if (type) params.set('equip_type', type);
+    $.get('/api/inspection/templates?' + params.toString()).done(function(data) {
+        renderTable(data);
+    });
+}
+
+function renderTable(data) {
+    const tbody = $('#tableBody').empty();
+    if (!data || data.length === 0) {
+        tbody.append('<tr><td colspan="9" class="text-center text-muted py-4">暂无巡检模板</td></tr>');
+        return;
+    }
+    data.forEach(function(item) {
+        const requiredBadge = item.is_required
+            ? '<span class="badge bg-danger badge-status">是</span>'
+            : '<span class="badge bg-secondary badge-status">否</span>';
+        tbody.append(`
+            <tr>
+                <td>${item.sort_order || 0}</td>
+                <td><span class="badge bg-info text-dark" style="font-size:0.75rem;">${EQUIP_TYPE_MAP[item.equip_type] || item.equip_type}</span></td>
+                <td class="fw-bold">${item.item_name}</td>
+                <td>${ITEM_TYPE_MAP[item.item_type] || item.item_type}</td>
+                <td>${item.unit || '--'}</td>
+                <td><code style="font-size:0.75rem;">${item.normal_range || '--'}</code></td>
+                <td>${requiredBadge}</td>
+                <td><small class="text-muted">${item.item_desc || ''}</small></td>
+                <td>
+                    <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
+        `);
+    });
+}
+
+function onItemTypeChange() {
+    const t = $('#editItemType').val();
+    if (t === 'number') {
+        $('#editUnit').attr('placeholder', '如：%, °C, Mbps');
+    } else if (t === 'checkbox') {
+        $('#editUnit').attr('placeholder', '勾选框无需单位');
+    } else {
+        $('#editUnit').attr('placeholder', '可选');
+    }
+}
+
+function showAddModal() {
+    $('#editId').val('');
+    $('#editEquipType').val('network');
+    $('#editItemName').val('');
+    $('#editItemType').val('checkbox');
+    $('#editUnit').val('');
+    $('#editNormalRange').val('');
+    $('#editSortOrder').val('0');
+    $('#editIsRequired').prop('checked', true);
+    $('#editItemDesc').val('');
+    $('#modalTitle').text('新增巡检项');
+    new bootstrap.Modal($('#editModal')[0]).show();
+}
+
+function editData(id) {
+    $.get('/api/inspection/templates?equip_type=').done(function(data) {
+        const item = data.find(x => x.id === id);
+        if (!item) return;
+        $('#editId').val(item.id);
+        $('#editEquipType').val(item.equip_type);
+        $('#editItemName').val(item.item_name);
+        $('#editItemType').val(item.item_type || 'checkbox');
+        $('#editUnit').val(item.unit || '');
+        $('#editNormalRange').val(item.normal_range || '');
+        $('#editSortOrder').val(item.sort_order || 0);
+        $('#editIsRequired').prop('checked', !!item.is_required);
+        $('#editItemDesc').val(item.item_desc || '');
+        $('#modalTitle').text('编辑巡检项');
+        new bootstrap.Modal($('#editModal')[0]).show();
+    });
+}
+
+function saveData() {
+    const id = $('#editId').val();
+    const data = {
+        equip_type: $('#editEquipType').val(),
+        item_name: $('#editItemName').val().trim(),
+        item_type: $('#editItemType').val(),
+        unit: $('#editUnit').val().trim(),
+        normal_range: $('#editNormalRange').val().trim(),
+        sort_order: parseInt($('#editSortOrder').val()) || 0,
+        is_required: $('#editIsRequired').is(':checked') ? 1 : 0,
+        item_desc: $('#editItemDesc').val().trim()
+    };
+    if (!data.item_name) { showToast('请填写项目名称', 'warning'); return; }
+    const req = id ? $.ajax({ url: '/api/inspection/templates/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+                   : $.ajax({ url: '/api/inspection/templates', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+    req.done(function() {
+        showToast(id ? '更新成功' : '新增成功');
+        bootstrap.Modal.getInstance($('#editModal')[0]).hide();
+        loadData();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); });
+}
+
+function deleteData(id) {
+    if (!confirm('确定删除此巡检项？')) return;
+    $.ajax({ url: '/api/inspection/templates/' + id, method: 'DELETE' }).done(function() {
+        showToast('删除成功'); loadData();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); });
+}
+
+$(function() { loadData(); });
+</script>
+{% endblock %}

@@ -1,0 +1,430 @@
+{% extends "base.html" %}
+{% block title %}巡检任务分配 - 企业运维管理系统{% endblock %}
+{% block page_title %}巡检任务分配{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+
+    <!-- Tab 切换 -->
+    <ul class="nav nav-tabs mb-3" id="taskTabs">
+        <li class="nav-item">
+            <a class="nav-link active" href="#tab-tasks" data-bs-toggle="tab">任务配置</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#tab-records" data-bs-toggle="tab" onclick="loadRecords()">完成情况</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="#tab-stats" data-bs-toggle="tab" onclick="loadStats()">统计报表</a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+
+        <!-- ===== Tab1: 任务配置 ===== -->
+        <div class="tab-pane fade show active" id="tab-tasks">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <div class="d-flex gap-2 flex-wrap">
+                    <select class="form-select form-select-sm" id="filterStatus" onchange="loadTasks()" style="width:120px;">
+                        <option value="">全部状态</option>
+                        <option value="active">启用中</option>
+                        <option value="paused">已暂停</option>
+                    </select>
+                    <select class="form-select form-select-sm" id="filterEngineer" onchange="loadTasks()" style="width:140px;">
+                        <option value="">全部工程师</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="showAddModal()">
+                    <i class="bi bi-plus-lg"></i> 新增任务
+                </button>
+            </div>
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>任务名称</th>
+                                    <th>设备/类型</th>
+                                    <th>负责人</th>
+                                    <th>周期</th>
+                                    <th>提醒时间</th>
+                                    <th>状态</th>
+                                    <th style="width:100px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tasksBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Tab2: 完成情况 ===== -->
+        <div class="tab-pane fade" id="tab-records">
+            <div class="d-flex gap-2 mb-2 flex-wrap align-items-center">
+                <input type="date" class="form-control form-control-sm" id="recStartDate" style="width:140px;" onchange="loadRecords()">
+                <span class="text-muted">至</span>
+                <input type="date" class="form-control form-control-sm" id="recEndDate" style="width:140px;" onchange="loadRecords()">
+                <select class="form-select form-select-sm" id="recEngineer" onchange="loadRecords()" style="width:140px;">
+                    <option value="">全部工程师</option>
+                </select>
+            </div>
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>计划日期</th>
+                                    <th>任务名称</th>
+                                    <th>设备</th>
+                                    <th>工程师</th>
+                                    <th>周期</th>
+                                    <th>提醒时间</th>
+                                    <th>状态</th>
+                                    <th>完成时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recordsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Tab3: 统计报表 ===== -->
+        <div class="tab-pane fade" id="tab-stats">
+            <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+                <input type="date" class="form-control form-control-sm" id="statsStart" style="width:140px;" onchange="loadStats()">
+                <span class="text-muted">至</span>
+                <input type="date" class="form-control form-control-sm" id="statsEnd" style="width:140px;" onchange="loadStats()">
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header fw-bold" style="font-size:0.85rem;">
+                            <i class="bi bi-person-check me-1"></i>按工程师完成情况
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0" id="statsEngineerTable">
+                                <thead><tr><th>工程师</th><th>总任务</th><th>已完成</th><th>完成率</th></tr></thead>
+                                <tbody id="statsEngineerBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header fw-bold" style="font-size:0.85rem;">
+                            <i class="bi bi-calendar3 me-1"></i>按日期完成情况
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0" id="statsDailyTable">
+                                <thead><tr><th>日期</th><th>总任务</th><th>已完成</th><th>待完成</th><th>完成率</th></tr></thead>
+                                <tbody id="statsDailyBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增/编辑任务模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">新增巡检任务</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">任务名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="editTaskName" placeholder="如：核心交换机每日巡检">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">关联设备（可选）</label>
+                        <select class="form-select form-select-sm" id="editEquipment" onchange="onEquipChange()">
+                            <option value="">不指定具体设备（按类型）</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">设备类型 <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" id="editEquipType">
+                            <option value="network">网络设备</option>
+                            <option value="security">安全设备</option>
+                            <option value="server">服务器</option>
+                            <option value="storage">存储</option>
+                            <option value="wireless">无线</option>
+                            <option value="other">其他</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">负责人 <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm" id="editEngineer">
+                            <option value="">请选择工程师</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">巡检周期</label>
+                        <select class="form-select form-select-sm" id="editFrequency">
+                            <option value="daily">每日</option>
+                            <option value="weekly">每周（周一）</option>
+                            <option value="monthly">每月（1号）</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">
+                            提醒时间
+                            <small class="text-muted fw-normal">（截止时间，超时未完成提示逾期）</small>
+                        </label>
+                        <input type="time" class="form-control form-control-sm" id="editReminderTime" value="17:00">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">起始日期 <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control form-control-sm" id="editNextDate">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
+                        <select class="form-select form-select-sm" id="editStatus">
+                            <option value="active">启用</option>
+                            <option value="paused">暂停</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveTask()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const FREQ_MAP = { 'daily': '每日', 'weekly': '每周', 'monthly': '每月' };
+const REC_STATUS_MAP = {
+    'pending': '<span class="badge bg-warning text-dark badge-status">待完成</span>',
+    'completed': '<span class="badge bg-success badge-status">已完成</span>',
+    'overdue': '<span class="badge bg-danger badge-status">已逾期</span>'
+};
+const TASK_STATUS_MAP = {
+    'active': '<span class="badge bg-success badge-status">启用中</span>',
+    'paused': '<span class="badge bg-secondary badge-status">已暂停</span>'
+};
+let equipList = [];
+
+// 初始化日期
+$(function() {
+    const today = new Date().toISOString().slice(0,10);
+    const first = today.slice(0,8) + '01';
+    $('#recStartDate').val(first);
+    $('#recEndDate').val(today);
+    $('#statsStart').val(first);
+    $('#statsEnd').val(today);
+    $('#editNextDate').val(today);
+    loadUsers();
+    loadEquipments();
+    loadTasks();
+});
+
+function loadUsers() {
+    $.get('/api/users').done(function(data) {
+        const eng = data.filter(u => u.is_active);
+        ['#editEngineer','#filterEngineer','#recEngineer'].forEach(function(sel) {
+            const $s = $(sel);
+            const isFilter = sel !== '#editEngineer';
+            $s.find('option:not(:first)').remove();
+            eng.forEach(function(u) {
+                $s.append(`<option value="${u.id}">${u.real_name || u.username}</option>`);
+            });
+        });
+    });
+}
+
+function loadEquipments() {
+    $.get('/api/equipment').done(function(data) {
+        equipList = data;
+        const sel = $('#editEquipment');
+        sel.find('option:not(:first)').remove();
+        data.forEach(function(e) {
+            sel.append(`<option value="${e.id}" data-type="${e.equip_type}">[${EQUIP_TYPE_MAP[e.equip_type]||e.equip_type}] ${e.equip_no} - ${e.name}</option>`);
+        });
+    });
+}
+
+function onEquipChange() {
+    const val = $('#editEquipment').val();
+    if (val) {
+        const eq = equipList.find(e => e.id == val);
+        if (eq) $('#editEquipType').val(eq.equip_type);
+    }
+}
+
+function loadTasks() {
+    const params = new URLSearchParams();
+    const s = $('#filterStatus').val(), e = $('#filterEngineer').val();
+    if (s) params.set('status', s);
+    if (e) params.set('engineer_id', e);
+    $.get('/api/inspection/tasks?' + params).done(function(data) {
+        const tbody = $('#tasksBody').empty();
+        if (!data.length) {
+            tbody.append('<tr><td colspan="7" class="text-center text-muted py-4">暂无巡检任务</td></tr>');
+            return;
+        }
+        data.forEach(function(t) {
+            const eq = t.equipment_name
+                ? `<strong>${t.equipment_name}</strong><small class="d-block text-muted">${t.equip_no}</small>`
+                : `<span class="badge bg-light text-dark border">${EQUIP_TYPE_MAP[t.equip_type]||t.equip_type}</span><small class="d-block text-muted">类型任务</small>`;
+            tbody.append(`<tr>
+                <td class="fw-bold">${t.task_name}</td>
+                <td>${eq}</td>
+                <td>${t.engineer_name||'--'}</td>
+                <td>${FREQ_MAP[t.frequency]||t.frequency}</td>
+                <td><i class="bi bi-alarm text-warning me-1"></i>${t.reminder_time||'17:00'} 前</td>
+                <td>${TASK_STATUS_MAP[t.status]||t.status}</td>
+                <td>
+                    <button class="btn btn-outline-primary btn-sm action-btn" onclick="editTask(${t.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteTask(${t.id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>`);
+        });
+    });
+}
+
+function loadRecords() {
+    const params = new URLSearchParams({
+        start_date: $('#recStartDate').val(),
+        end_date: $('#recEndDate').val()
+    });
+    const eng = $('#recEngineer').val();
+    if (eng) params.set('engineer_id', eng);
+    $.get('/api/inspection/tasks/records?' + params).done(function(data) {
+        const tbody = $('#recordsBody').empty();
+        if (!data.length) {
+            tbody.append('<tr><td colspan="8" class="text-center text-muted py-4">暂无执行记录</td></tr>');
+            return;
+        }
+        data.forEach(function(r) {
+            const eq = r.equipment_name ? `${r.equipment_name}` : `[${EQUIP_TYPE_MAP[r.equip_type]||r.equip_type}]`;
+            tbody.append(`<tr>
+                <td>${r.plan_date}</td>
+                <td>${r.task_name}</td>
+                <td>${eq}</td>
+                <td>${r.engineer_name||'--'}</td>
+                <td>${FREQ_MAP[r.frequency]||r.frequency}</td>
+                <td><span class="text-warning">${r.reminder_time||'17:00'}</span></td>
+                <td>${REC_STATUS_MAP[r.status]||r.status}</td>
+                <td>${r.completed_at ? r.completed_at.slice(0,16) : '--'}</td>
+            </tr>`);
+        });
+    });
+}
+
+function loadStats() {
+    const params = new URLSearchParams({
+        start_date: $('#statsStart').val(),
+        end_date: $('#statsEnd').val()
+    });
+    $.get('/api/inspection/tasks/stats?' + params).done(function(data) {
+        // 工程师统计
+        const eb = $('#statsEngineerBody').empty();
+        data.by_engineer.forEach(function(r) {
+            const rate = r.total ? Math.round(r.completed/r.total*100) : 0;
+            const color = rate >= 90 ? 'success' : rate >= 60 ? 'warning' : 'danger';
+            eb.append(`<tr>
+                <td>${r.engineer_name}</td>
+                <td>${r.total}</td>
+                <td>${r.completed}</td>
+                <td><span class="badge bg-${color}">${rate}%</span></td>
+            </tr>`);
+        });
+        if (!data.by_engineer.length) eb.append('<tr><td colspan="4" class="text-center text-muted py-3">暂无数据</td></tr>');
+
+        // 日期统计
+        const db = $('#statsDailyBody').empty();
+        data.daily.forEach(function(r) {
+            const rate = r.total ? Math.round(r.completed/r.total*100) : 0;
+            const color = rate >= 90 ? 'success' : rate >= 60 ? 'warning' : 'danger';
+            db.append(`<tr>
+                <td>${r.plan_date}</td>
+                <td>${r.total}</td>
+                <td>${r.completed}</td>
+                <td>${r.pending}</td>
+                <td><span class="badge bg-${color}">${rate}%</span></td>
+            </tr>`);
+        });
+        if (!data.daily.length) db.append('<tr><td colspan="5" class="text-center text-muted py-3">暂无数据</td></tr>');
+    });
+}
+
+function showAddModal() {
+    $('#editId').val('');
+    $('#editTaskName').val('');
+    $('#editEquipment').val('');
+    $('#editEquipType').val('network');
+    $('#editEngineer').val('');
+    $('#editFrequency').val('daily');
+    $('#editReminderTime').val('17:00');
+    $('#editNextDate').val(new Date().toISOString().slice(0,10));
+    $('#editStatus').val('active');
+    $('#modalTitle').text('新增巡检任务');
+    new bootstrap.Modal($('#editModal')[0]).show();
+}
+
+function editTask(id) {
+    $.get('/api/inspection/tasks').done(function(data) {
+        const t = data.find(x => x.id === id);
+        if (!t) return;
+        $('#editId').val(t.id);
+        $('#editTaskName').val(t.task_name);
+        $('#editEquipment').val(t.equipment_id||'');
+        $('#editEquipType').val(t.equip_type||'network');
+        $('#editEngineer').val(t.engineer_id||'');
+        $('#editFrequency').val(t.frequency||'daily');
+        $('#editReminderTime').val(t.reminder_time||'17:00');
+        $('#editNextDate').val(t.next_date);
+        $('#editStatus').val(t.status||'active');
+        $('#modalTitle').text('编辑巡检任务');
+        new bootstrap.Modal($('#editModal')[0]).show();
+    });
+}
+
+function saveTask() {
+    const id = $('#editId').val();
+    const data = {
+        task_name: $('#editTaskName').val().trim(),
+        equipment_id: $('#editEquipment').val() || null,
+        equip_type: $('#editEquipType').val(),
+        engineer_id: parseInt($('#editEngineer').val()) || null,
+        frequency: $('#editFrequency').val(),
+        next_date: $('#editNextDate').val(),
+        reminder_time: $('#editReminderTime').val() || '17:00',
+        status: $('#editStatus').val()
+    };
+    if (!data.task_name) { showToast('请填写任务名称', 'warning'); return; }
+    if (!data.engineer_id) { showToast('请选择负责人', 'warning'); return; }
+    if (!data.next_date) { showToast('请选择起始日期', 'warning'); return; }
+    const req = id
+        ? $.ajax({ url: '/api/inspection/tasks/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+        : $.ajax({ url: '/api/inspection/tasks', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+    req.done(function() {
+        showToast(id ? '更新成功' : '任务创建成功，今日执行记录已生成');
+        bootstrap.Modal.getInstance($('#editModal')[0]).hide();
+        loadTasks();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); });
+}
+
+function deleteTask(id) {
+    if (!confirm('确定删除此巡检任务？删除后将同步删除所有执行记录。')) return;
+    $.ajax({ url: '/api/inspection/tasks/' + id, method: 'DELETE' }).done(function() {
+        showToast('删除成功'); loadTasks();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); });
+}
+</script>
+{% endblock %}

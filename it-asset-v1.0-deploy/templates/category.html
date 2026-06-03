@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}资产分类 - IT资产管理系统{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-diagram-3"></i> 资产分类</h4>
+
+<div class="row">
+    <div class="col-md-5">
+        <div class="card p-3">
+            <h6>分类列表</h6>
+            <div id="categoryTree" class="mt-3"></div>
+        </div>
+    </div>
+    <div class="col-md-7">
+        <div class="card p-3">
+            <h6 id="formTitle">新增分类</h6>
+            <input type="hidden" id="editId">
+            <div class="row g-3 mt-1">
+                <div class="col-md-6">
+                    <label class="form-label">分类名称 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="fName">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">上级分类</label>
+                    <select class="form-select" id="fParent"><option value="">无（顶级分类）</option></select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">排序</label>
+                    <input type="number" class="form-control" id="fSort" value="0">
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <button class="btn btn-primary me-2" onclick="saveCategory()">保存</button>
+                    <button class="btn btn-secondary" onclick="resetForm()">重置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let categories = [];
+$(function() { loadCategories(); });
+
+function loadCategories() {
+    $.get('/api/categories', function(data) {
+        categories = data;
+        // 树形展示
+        let html = '';
+        const roots = data.filter(c => !c.parent_id);
+        roots.forEach(r => {
+            html += `<div class="mb-2">
+                <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded">
+                    <strong><i class="bi bi-folder2-open text-warning"></i> ${r.name}</strong>
+                    <span>
+                        <button class="btn btn-sm btn-outline-primary action-btn" onclick="editCat(${r.id})"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-outline-danger action-btn" onclick="deleteCat(${r.id})"><i class="bi bi-trash"></i></button>
+                    </span>
+                </div>`;
+            const children = data.filter(c => c.parent_id === r.id);
+            children.forEach(ch => {
+                html += `<div class="d-flex justify-content-between align-items-center p-2 ms-4 border-bottom">
+                    <span><i class="bi bi-folder text-muted"></i> ${ch.name}</span>
+                    <span>
+                        <button class="btn btn-sm btn-outline-primary action-btn" onclick="editCat(${ch.id})"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-outline-danger action-btn" onclick="deleteCat(${ch.id})"><i class="bi bi-trash"></i></button>
+                    </span>
+                </div>`;
+            });
+            html += '</div>';
+        });
+        $('#categoryTree').html(html || '<p class="text-muted">暂无分类</p>');
+
+        // 上级分类选项
+        let opts = '<option value="">无（顶级分类）</option>';
+        roots.forEach(r => opts += `<option value="${r.id}">${r.name}</option>`);
+        $('#fParent').html(opts);
+    });
+}
+
+function editCat(id) {
+    const cat = categories.find(c => c.id === id);
+    if (!cat) return;
+    $('#editId').val(cat.id);
+    $('#fName').val(cat.name);
+    $('#fParent').val(cat.parent_id || '');
+    $('#fSort').val(cat.sort_order);
+    $('#formTitle').text('编辑分类');
+}
+
+function resetForm() {
+    $('#editId').val(''); $('#fName').val(''); $('#fParent').val(''); $('#fSort').val(0);
+    $('#formTitle').text('新增分类');
+}
+
+function saveCategory() {
+    const id = $('#editId').val();
+    const data = { name: $('#fName').val(), parent_id: $('#fParent').val() || null, sort_order: parseInt($('#fSort').val()) || 0 };
+    if (!data.name) { showToast('请填写分类名称', 'danger'); return; }
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `/api/categories/${id}` : '/api/categories';
+    $.ajax({ url, method, contentType: 'application/json', data: JSON.stringify(data),
+        success: function() { showToast('保存成功'); resetForm(); loadCategories(); },
+        error: function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); }
+    });
+}
+
+function deleteCat(id) {
+    if (!confirm('确定删除此分类？')) return;
+    $.ajax({ url: `/api/categories/${id}`, method: 'DELETE',
+        success: function() { showToast('删除成功'); loadCategories(); },
+        error: function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); }
+    });
+}
+</script>
+{% endblock %}

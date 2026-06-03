@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}到期预警 - IT资产管理系统{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-bell"></i> 到期预警</h4>
+
+<div class="row mb-3">
+    <div class="col-auto">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+            <label class="form-check-label" for="autoRefresh">自动刷新（30秒）</label>
+        </div>
+    </div>
+    <div class="col-auto"><button class="btn btn-primary" onclick="loadAlerts()"><i class="bi bi-arrow-clockwise"></i> 刷新</button></div>
+</div>
+
+<!-- 预警统计 -->
+<div class="row mb-3" id="alertStats"></div>
+
+<!-- 预警列表 -->
+<div class="card p-3 mb-3">
+    <h6 class="mb-3">全部预警 <span class="badge bg-danger" id="dangerCount">0</span> <span class="badge bg-warning text-dark" id="warnCount">0</span></h6>
+    <table class="table table-hover table-sm">
+        <thead><tr><th>级别</th><th>类型</th><th>预警信息</th><th>到期时间</th><th>剩余天数</th><th>操作</th></tr></thead>
+        <tbody id="alertTable"></tbody>
+    </table>
+</div>
+
+<!-- 保修到期 -->
+<div class="card p-3 mb-3">
+    <h6 class="mb-3"><i class="bi bi-shield-exclamation text-warning"></i> 保修即将到期</h6>
+    <table class="table table-hover table-sm">
+        <thead><tr><th>资产编号</th><th>名称</th><th>部门/责任人</th><th>保修到期</th><th>剩余天数</th></tr></thead>
+        <tbody id="warrantyTable"></tbody>
+    </table>
+</div>
+
+<!-- 软件授权到期 -->
+<div class="card p-3 mb-3">
+    <h6 class="mb-3"><i class="bi bi-key text-info"></i> 软件授权即将到期</h6>
+    <table class="table table-hover table-sm">
+        <thead><tr><th>软件名称</th><th>版本</th><th>授权数量/已用</th><th>到期时间</th><th>剩余天数</th></tr></thead>
+        <tbody id="licenseTable"></tbody>
+    </table>
+</div>
+
+<!-- 合同到期 -->
+<div class="card p-3">
+    <h6 class="mb-3"><i class="bi bi-file-text text-primary"></i> 合同即将到期</h6>
+    <table class="table table-hover table-sm">
+        <thead><tr><th>合同编号</th><th>标题</th><th>供应商</th><th>金额</th><th>到期时间</th><th>剩余天数</th></tr></thead>
+        <tbody id="contractTable"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let refreshTimer = null;
+$(function() { loadAlerts(); startAutoRefresh(); });
+
+function startAutoRefresh() {
+    refreshTimer = setInterval(function() {
+        if ($('#autoRefresh').is(':checked')) loadAlerts();
+    }, 30000);
+}
+
+function getExpireField(alertType) {
+    // 根据预警类型返回对应的到期日期字段
+    const fieldMap = {
+        'warranty': 'warranty_expire',
+        'license':  'expire_date',
+        'contract': 'end_date',
+        'domain':   'expire_date'
+    };
+    return fieldMap[alertType] || 'expire_date';
+}
+
+function getTypeLabel(alertType) {
+    const labelMap = {
+        'warranty': '保修到期',
+        'license':  '授权到期',
+        'contract': '合同到期',
+        'domain':   '域名到期'
+    };
+    return labelMap[alertType] || alertType;
+}
+
+function getLinkPath(alertType) {
+    const pathMap = {
+        'warranty': '/asset',
+        'license':  '/software',
+        'contract': '/contract',
+        'domain':   '/domain'
+    };
+    return pathMap[alertType] || '/';
+}
+
+function loadAlerts() {
+    $.get('/api/alerts', function(data) {
+        const dangerCount = data.filter(a => a.level === 'danger').length;
+        const warnCount = data.filter(a => a.level === 'warning').length;
+
+        $('#dangerCount').text(dangerCount); $('#warnCount').text(warnCount);
+
+        // 统计卡片（包含域名）
+        const warrantyCnt = data.filter(a => a.alert_type === 'warranty').length;
+        const licenseCnt = data.filter(a => a.alert_type === 'license').length;
+        const contractCnt = data.filter(a => a.alert_type === 'contract').length;
+        const domainCnt = data.filter(a => a.alert_type === 'domain').length;
+
+        $('#alertStats').html(`
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-danger">${data.length}</div><div class="stat-label">预警总数</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-warning">${warrantyCnt}</div><div class="stat-label">保修到期</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-info">${licenseCnt}</div><div class="stat-label">授权到期</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-primary">${contractCnt}</div><div class="stat-label">合同到期</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-success">${domainCnt}</div><div class="stat-label">域名到期</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number ${dangerCount>0?'text-danger':''}">${dangerCount}</div><div class="stat-label">紧急</div></div></div>
+        `);
+
+        // 全部预警列表
+        let html = '';
+        data.forEach(a => {
+            const icon = a.level === 'danger' ? '<i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>' :
+                         '<i class="bi bi-exclamation-circle-fill text-warning me-2"></i>';
+            const expireField = getExpireField(a.alert_type);
+            const expireDate = a[expireField] || '-';
+            let daysLeftText = '-';
+            try {
+                if (a[expireField]) {
+                    daysLeftText = Math.floor((new Date(a[expireField]) - new Date()) / 86400000) + '天';
+                }
+            } catch(e) {}
+            html += `<tr>
+                <td>${icon}${a.level==='danger'?'紧急':'提醒'}</td>
+                <td>${getTypeLabel(a.alert_type)}</td>
+                <td>${a.message}</td>
+                <td>${expireDate}</td>
+                <td>${daysLeftText}</td>
+                <td><a href="${getLinkPath(a.alert_type)}">查看详情</a></td>
+            </tr>`;
+        });
+        $('#alertTable').html(html || '<tr><td colspan="6" class="text-center text-success">暂无预警信息，一切正常！</td></tr>');
+
+        // 分表渲染（每种类型独立表格）
+        renderSubTable('warrantyTable', data, 'warranty');
+        renderSubTable('licenseTable', data, 'license');
+        renderSubTable('contractTable', data, 'contract');
+
+        // 域名分表（追加到合同后面）
+        ensureDomainTable(data);
+    });
+}
+
+function renderSubTable(tableId, data, type) {
+    const filtered = data.filter(a => a.alert_type === type);
+    let html = '';
+    const colSpan = { warranty:5, license:5, contract:6 };
+
+    if (type === 'warranty') {
+        filtered.forEach(a => {
+            let dl = '-';
+            try { dl = Math.floor((new Date(a.warranty_expire) - new Date()) / 86400000) + '天'; } catch(e) {}
+            html += `<tr><td>${a.asset_no||'-'}</td><td>${a.name||'-'}</td><td>-</td><td>${a.warranty_expire||'-'}</td><td>${dl}</td></tr>`;
+        });
+    } else if (type === 'license') {
+        filtered.forEach(a => {
+            let dl = '-';
+            try { dl = Math.floor((new Date(a.expire_date) - new Date()) / 86400000) + '天'; } catch(e) {}
+            html += `<tr><td>${a.name||'-'}</td><td>${a.version||'-'}</td><td>-</td><td>${a.expire_date||'-'}</td><td>${dl}</td></tr>`;
+        });
+    } else if (type === 'contract') {
+        filtered.forEach(a => {
+            let dl = '-';
+            try { dl = Math.floor((new Date(a.end_date) - new Date()) / 86400000) + '天'; } catch(e) {}
+            html += `<tr><td>${a.contract_no||'-'}</td><td>${a.title||'-'}</td><td>-</td><td>${formatCurrency(a.amount)}</td><td>${a.end_date||'-'}</td><td>${dl}</td></tr>`;
+        });
+    }
+
+    if (!html) {
+        const emptyLabels = { warranty:'保修', license:'软件授权', contract:'合同' };
+        html = `<tr><td colspan="${colSpan[type]}" class="text-center text-success">暂无${emptyLabels[type]}到期预警</td></tr>`;
+    }
+    $(`#${tableId}`).html(html);
+}
+
+// 域名到期分表
+function ensureDomainTable(data) {
+    // 检查是否已有域名分表容器
+    if ($('#domainAlertTable').length === 0) {
+        $('.card:last').after(`
+<div class="card p-3 mt-3">
+    <h6 class="mb-3"><i class="bi bi-globe2 text-success"></i> 域名即将到期</h6>
+    <table class="table table-hover table-sm">
+        <thead><tr><th>域名</th><th>服务商</th><th>负责人</th><th>到期时间</th><th>剩余天数</th></tr></thead>
+        <tbody id="domainAlertTable"></tbody>
+    </table>
+</div>`);
+    }
+
+    const domainData = data.filter(a => a.alert_type === 'domain');
+    let html = '';
+    domainData.forEach(a => {
+        let dl = '-';
+        try { dl = Math.floor((new Date(a.expire_date) - new Date()) / 86400000) + '天'; } catch(e) {}
+        html += `<tr>
+            <td><strong>${a.domain_name||'-'}</strong></td>
+            <td>${a.registrar||'-'}</td>
+            <td>${a.custodian||'-'}</td>
+            <td>${a.expire_date||'-'}</td>
+            <td>${dl}</td>
+        </tr>`;
+    });
+    if (!html) {
+        html = '<tr><td colspan="5" class="text-center text-success">暂无域名到期预警</td></tr>';
+    }
+    $('#domainAlertTable').html(html);
+}
+</script>
+{% endblock %}

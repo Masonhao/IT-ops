@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}合同管理 - IT资产管理系统{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-file-earmark-text"></i> 合同管理</h4>
+
+<div class="card p-3 mb-3">
+    <div class="d-flex justify-content-end">
+        <button class="btn btn-success" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增合同</button>
+    </div>
+</div>
+
+<div class="card p-3">
+    <table class="table table-hover table-sm">
+        <thead><tr><th>合同编号</th><th>标题</th><th>类型</th><th>供应商</th><th>金额</th><th>起止日期</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="contractTable"></tbody>
+    </table>
+</div>
+
+<!-- 模态框 -->
+<div class="modal fade" id="ctModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title" id="ctModalTitle">新增合同</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label">合同编号 <span class="text-danger">*</span></label><input type="text" class="form-control" id="fContractNo"></div>
+                    <div class="col-md-6"><label class="form-label">合同名称 <span class="text-danger">*</span></label><input type="text" class="form-control" id="fTitle"></div>
+                    <div class="col-md-6">
+                        <label class="form-label">合同类型</label>
+                        <select class="form-select" id="fType">
+                            <option value="purchase">采购</option><option value="maintenance">维保</option>
+                            <option value="lease">租赁</option><option value="service">服务</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">供应商</label>
+                        <select class="form-select" id="fSupplier"><option value="">请选择</option></select>
+                    </div>
+                    <div class="col-md-6"><label class="form-label">金额(元)</label><input type="number" step="0.01" class="form-control" id="fAmount"></div>
+                    <div class="col-md-6">
+                        <label class="form-label">状态</label>
+                        <select class="form-select" id="fStatus">
+                            <option value="active">有效</option><option value="expired">已过期</option><option value="terminated">已终止</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6"><label class="form-label">开始日期</label><input type="date" class="form-control" id="fStartDate"></div>
+                    <div class="col-md-6"><label class="form-label">结束日期</label><input type="date" class="form-control" id="fEndDate"></div>
+                    <div class="col-12"><label class="form-label">备注</label><textarea class="form-control" id="fRemark" rows="2"></textarea></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveContract()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const TYPE_MAP = { purchase: '采购', maintenance: '维保', lease: '租赁', service: '服务' };
+const STATUS_MAP_CT = { active: '<span class="badge bg-success">有效</span>', expired: '<span class="badge bg-secondary">已过期</span>', terminated: '<span class="badge bg-danger">已终止</span>' };
+
+$(function() { loadContracts(); loadSuppliers(); });
+
+function loadSuppliers() {
+    $.get('/api/suppliers', function(data) {
+        let opts = '<option value="">请选择</option>';
+        data.forEach(s => opts += `<option value="${s.id}">${s.name}</option>`);
+        $('#fSupplier').html(opts);
+    });
+}
+
+function loadContracts() {
+    $.get('/api/contracts', function(data) {
+        let html = '';
+        data.forEach(c => {
+            const expireWarn = c.end_date && new Date(c.end_date) < new Date(Date.now() + 30*86400000) ? ' <i class="bi bi-exclamation-triangle text-warning"></i>' : '';
+            html += `<tr>
+                <td>${c.contract_no}${expireWarn}</td><td>${c.title}</td><td>${TYPE_MAP[c.contract_type]||c.contract_type}</td>
+                <td>${c.supplier_name||'-'}</td><td>${formatCurrency(c.amount)}</td>
+                <td>${formatDate(c.start_date)} ~ ${formatDate(c.end_date)}</td>
+                <td>${STATUS_MAP_CT[c.status]||c.status}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-warning action-btn" onclick="editContract(${c.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger action-btn" onclick="deleteContract(${c.id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>`;
+        });
+        $('#contractTable').html(html || '<tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>');
+    });
+}
+
+function openModal() {
+    $('#editId').val(''); $('#ctModalTitle').text('新增合同');
+    $('#ctModal input, #ctModal textarea').val(''); $('#fStatus').val('active'); $('#fType').val('purchase');
+    new bootstrap.Modal($('#ctModal')).show();
+}
+
+function editContract(id) {
+    $.get('/api/contracts', function(data) {
+        const c = data.find(i => i.id === id);
+        if (!c) return;
+        $('#editId').val(c.id); $('#ctModalTitle').text('编辑合同');
+        $('#fContractNo').val(c.contract_no); $('#fTitle').val(c.title);
+        $('#fType').val(c.contract_type); $('#fSupplier').val(c.supplier_id||'');
+        $('#fAmount').val(c.amount||''); $('#fStatus').val(c.status);
+        $('#fStartDate').val(c.start_date||''); $('#fEndDate').val(c.end_date||'');
+        $('#fRemark').val(c.remark||'');
+        new bootstrap.Modal($('#ctModal')).show();
+    });
+}
+
+function saveContract() {
+    const id = $('#editId').val();
+    const data = {
+        contract_no: $('#fContractNo').val(), title: $('#fTitle').val(),
+        contract_type: $('#fType').val(), supplier_id: $('#fSupplier').val()||null,
+        amount: $('#fAmount').val()?parseFloat($('#fAmount').val()):null, status: $('#fStatus').val(),
+        start_date: $('#fStartDate').val()||null, end_date: $('#fEndDate').val()||null,
+        remark: $('#fRemark').val()
+    };
+    if (!data.contract_no || !data.title) { showToast('请填写合同编号和名称', 'danger'); return; }
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `/api/contracts/${id}` : '/api/contracts';
+    $.ajax({ url, method, contentType: 'application/json', data: JSON.stringify(data),
+        success: function() { showToast('保存成功'); bootstrap.Modal.getInstance($('#ctModal')).hide(); loadContracts(); },
+        error: function() { showToast('操作失败', 'danger'); }
+    });
+}
+
+function deleteContract(id) {
+    if (!confirm('确定删除此合同？')) return;
+    $.ajax({ url: `/api/contracts/${id}`, method: 'DELETE',
+        success: function() { showToast('删除成功'); loadContracts(); },
+        error: function() { showToast('删除失败', 'danger'); }
+    });
+}
+</script>
+{% endblock %}

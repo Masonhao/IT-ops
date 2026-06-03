@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+{% block title %}周报管理 - 企业运维管理系统{% endblock %}
+{% block page_title %}周报管理{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap filter-bar">
+            <input type="week" class="form-control form-control-sm" id="filterWeek" onchange="loadData()">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showAddModal()">
+            <i class="bi bi-plus-lg"></i> 新增周报
+        </button>
+    </div>
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0" id="dataTable">
+                    <thead>
+                        <tr>
+                            <th>周次</th>
+                            <th>标题</th>
+                            <th>填写人</th>
+                            <th>总耗时(分)</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增/编辑周报模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">新增周报</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">周次</label>
+                        <input type="week" class="form-control form-control-sm" id="editWeek" onchange="onWeekChange()">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">标题</label>
+                        <input type="text" class="form-control form-control-sm" id="editTitle" placeholder="周报标题">
+                    </div>
+
+                    <!-- 本周工作日志选择器 -->
+                    <div class="col-12">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
+                                <span class="fw-bold text-primary" style="font-size:0.85rem;">
+                                    <i class="bi bi-calendar2-week me-1"></i>本周工作日志（勾选后自动汇总到已完成工作）
+                                </span>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-outline-primary btn-sm py-0" onclick="selectAllLogs()">全选</button>
+                                    <button class="btn btn-outline-secondary btn-sm py-0" onclick="clearAllLogs()">清空</button>
+                                    <button class="btn btn-primary btn-sm py-0" onclick="mergeLogsToReport()">
+                                        <i class="bi bi-arrow-down-circle me-1"></i>带入周报
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body p-2" style="max-height:200px;overflow-y:auto;">
+                                <div id="weekLogsList">
+                                    <small class="text-muted">请先选择周次，然后加载本周日志</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">本周总结</label>
+                        <textarea class="form-control form-control-sm" id="editSummary" rows="2" placeholder="本周工作总体情况..."></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">已完成工作 <span class="text-muted fw-normal">(可从工作日志带入，支持手动编辑)</span></label>
+                        <textarea class="form-control form-control-sm" id="editCompleted" rows="5" placeholder="1. 完成了...&#10;2. 处理了..."></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">待处理事项</label>
+                        <textarea class="form-control form-control-sm" id="editPending" rows="2" placeholder="下周需要跟进的事项..."></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">问题与风险</label>
+                        <textarea class="form-control form-control-sm" id="editProblems" rows="2" placeholder="本周发现的问题或潜在风险..."></textarea>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">总耗时(分钟)</label>
+                        <input type="number" class="form-control form-control-sm" id="editDuration" value="0" min="0">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">关联工作日志ID</label>
+                        <input type="text" class="form-control form-control-sm" id="editWorkLogIds" placeholder="自动填入，也可手动输入">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
+                        <select class="form-select form-select-sm" id="editStatus">
+                            <option value="draft">草稿</option>
+                            <option value="submitted">已提交</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveData()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let weekLogsData = [];
+
+// 将 YYYY-W## 转换为该周一和周日的日期
+function getWeekRange(weekStr) {
+    if (!weekStr) return null;
+    const [year, week] = weekStr.split('-W').map(Number);
+    // ISO 8601: 第1周包含1月4日
+    const jan4 = new Date(year, 0, 4);
+    const dayOfWeek = jan4.getDay() || 7;
+    const monday = new Date(jan4);
+    monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = d => d.toISOString().slice(0,10);
+    return { start: fmt(monday), end: fmt(sunday) };
+}
+
+function onWeekChange() {
+    const weekVal = $('#editWeek').val();
+    if (!weekVal) return;
+    const range = getWeekRange(weekVal);
+    if (!range) return;
+    loadWeekLogs(range.start, range.end);
+    // 自动生成标题
+    if (!$('#editTitle').val()) {
+        $('#editTitle').val(`${weekVal} 工作周报`);
+    }
+}
+
+function loadWeekLogs(start, end) {
+    const params = new URLSearchParams({ start_date: start, end_date: end });
+    $.get('/api/worklogs?' + params).done(function(data) {
+        weekLogsData = data;
+        const el = $('#weekLogsList').empty();
+        if (!data.length) {
+            el.html('<small class="text-muted">本周暂无工作日志</small>');
+            return;
+        }
+        data.forEach(function(log) {
+            el.append(`<div class="form-check py-0">
+                <input class="form-check-input log-check" type="checkbox" id="lc_${log.id}" value="${log.id}"
+                    data-date="${log.log_date}" data-title="${log.title}" data-type="${log.work_type}"
+                    data-duration="${log.duration_minutes||0}" data-content="${log.content||''}">
+                <label class="form-check-label" for="lc_${log.id}" style="font-size:0.85rem;">
+                    <span class="text-muted">[${log.log_date}]</span>
+                    <span class="badge bg-info text-dark ms-1" style="font-size:0.7rem;">${WORK_TYPE_MAP[log.work_type]||log.work_type}</span>
+                    <span class="ms-1">${log.title}</span>
+                    <span class="text-muted ms-1">(${log.duration_minutes||0}分钟)</span>
+                </label>
+            </div>`);
+        });
+    });
+}
+
+function selectAllLogs() {
+    $('.log-check').prop('checked', true);
+}
+function clearAllLogs() {
+    $('.log-check').prop('checked', false);
+}
+
+function mergeLogsToReport() {
+    const selected = [];
+    const ids = [];
+    let totalDuration = 0;
+
+    $('.log-check:checked').each(function() {
+        const date = $(this).data('date');
+        const title = $(this).data('title');
+        const type = WORK_TYPE_MAP[$(this).data('type')] || $(this).data('type');
+        const duration = parseInt($(this).data('duration')) || 0;
+        const content = $(this).data('content');
+        selected.push(`[${date}][${type}] ${title}${duration > 0 ? ' (' + duration + '分钟)' : ''}${content ? '\n   ' + content : ''}`);
+        ids.push($(this).val());
+        totalDuration += duration;
+    });
+
+    if (!selected.length) {
+        showToast('请先勾选工作日志', 'warning');
+        return;
+    }
+
+    // 合并到"已完成工作"文本框
+    const existing = $('#editCompleted').val().trim();
+    const newContent = selected.map((s, i) => `${i+1}. ${s}`).join('\n');
+    $('#editCompleted').val(existing ? existing + '\n\n' + newContent : newContent);
+
+    // 更新关联ID（合并不重复）
+    const existingIds = ($('#editWorkLogIds').val() || '').split(',').map(x => x.trim()).filter(Boolean);
+    const mergedIds = [...new Set([...existingIds, ...ids])];
+    $('#editWorkLogIds').val(mergedIds.join(','));
+
+    // 累加总耗时
+    const existing_dur = parseInt($('#editDuration').val()) || 0;
+    $('#editDuration').val(existing_dur + totalDuration);
+
+    showToast(`已带入 ${selected.length} 条日志`);
+}
+
+function loadData() {
+    const params = new URLSearchParams({ report_type: 'weekly' });
+    $.get('/api/reports/list?' + params.toString()).done(function(data) {
+        renderTable(data);
+    });
+}
+
+function renderTable(data) {
+    const tbody = $('#tableBody').empty();
+    if (!data || data.length === 0) {
+        tbody.append('<tr><td colspan="6" class="text-center text-muted py-4">暂无周报</td></tr>');
+        return;
+    }
+    data.forEach(function(item) {
+        const statusBadge = item.status === 'submitted'
+            ? '<span class="badge bg-success badge-status">已提交</span>'
+            : '<span class="badge bg-secondary badge-status">草稿</span>';
+        tbody.append(`<tr>
+            <td>${item.report_date}</td>
+            <td><strong>${item.title}</strong></td>
+            <td>${item.user_name || '--'}</td>
+            <td>${item.duration_total || 0}</td>
+            <td>${statusBadge}</td>
+            <td>
+                <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
+            </td>
+        </tr>`);
+    });
+}
+
+function showAddModal() {
+    $('#editId').val('');
+    // 默认当前周
+    const now = new Date();
+    const year = now.getFullYear();
+    const startOfYear = new Date(year, 0, 1);
+    const week = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+    const weekStr = `${year}-W${String(week).padStart(2,'0')}`;
+    $('#editWeek').val(weekStr);
+    $('#editTitle').val(`${weekStr} 工作周报`);
+    $('#editSummary').val('');
+    $('#editCompleted').val('');
+    $('#editPending').val('');
+    $('#editProblems').val('');
+    $('#editDuration').val('0');
+    $('#editWorkLogIds').val('');
+    $('#editStatus').val('draft');
+    $('#weekLogsList').html('<small class="text-muted">加载本周日志中...</small>');
+    $('#modalTitle').text('新增周报');
+    const range = getWeekRange(weekStr);
+    if (range) loadWeekLogs(range.start, range.end);
+    new bootstrap.Modal($('#editModal')[0]).show();
+}
+
+function editData(id) {
+    $.get('/api/reports/' + id).done(function(item) {
+        $('#editId').val(item.id);
+        $('#editWeek').val(item.report_date);
+        $('#editTitle').val(item.title);
+        $('#editSummary').val(item.summary || '');
+        $('#editCompleted').val(item.completed_tasks || '');
+        $('#editPending').val(item.pending_tasks || '');
+        $('#editProblems').val(item.problems || '');
+        $('#editDuration').val(item.duration_total || 0);
+        $('#editWorkLogIds').val(item.work_log_ids || '');
+        $('#editStatus').val(item.status);
+        $('#modalTitle').text('编辑周报');
+        const range = getWeekRange(item.report_date);
+        if (range) loadWeekLogs(range.start, range.end);
+        new bootstrap.Modal($('#editModal')[0]).show();
+        // 标记已关联的日志
+        if (item.work_logs && item.work_logs.length) {
+            setTimeout(function() {
+                item.work_logs.forEach(function(wl) {
+                    $(`#lc_${wl.id}`).prop('checked', true);
+                });
+            }, 500);
+        }
+    });
+}
+
+function saveData() {
+    const id = $('#editId').val();
+    const data = {
+        report_type: 'weekly',
+        report_date: $('#editWeek').val(),
+        title: $('#editTitle').val(),
+        summary: $('#editSummary').val() || '',
+        completed_tasks: $('#editCompleted').val() || '',
+        pending_tasks: $('#editPending').val() || '',
+        problems: $('#editProblems').val() || '',
+        work_log_ids: $('#editWorkLogIds').val() || '',
+        duration_total: parseInt($('#editDuration').val()) || 0,
+        status: $('#editStatus').val()
+    };
+    if (!data.title) { showToast('请填写标题', 'warning'); return; }
+    const req = id ? $.ajax({ url: '/api/reports/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+                   : $.ajax({ url: '/api/reports', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+    req.done(function() {
+        showToast(id ? '更新成功' : '新增成功');
+        bootstrap.Modal.getInstance($('#editModal')[0]).hide();
+        loadData();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); });
+}
+
+function deleteData(id) {
+    if (!confirm('确定删除？')) return;
+    $.ajax({ url: '/api/reports/' + id, method: 'DELETE' }).done(function() {
+        showToast('删除成功'); loadData();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); });
+}
+
+$(function() {
+    loadData();
+});
+</script>
+{% endblock %}

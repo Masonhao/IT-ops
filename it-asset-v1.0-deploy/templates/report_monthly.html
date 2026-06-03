@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}月报管理 - 企业运维管理系统{% endblock %}
+{% block page_title %}月报管理{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap filter-bar">
+            <input type="month" class="form-control form-control-sm" id="filterMonth" onchange="loadData()">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showAddModal()">
+            <i class="bi bi-plus-lg"></i> 新增月报
+        </button>
+    </div>
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0" id="dataTable">
+                    <thead>
+                        <tr>
+                            <th>月份</th>
+                            <th>标题</th>
+                            <th>填写人</th>
+                            <th>总耗时(分)</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">新增月报</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">月份</label>
+                        <input type="month" class="form-control form-control-sm" id="editMonth">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">标题</label>
+                        <input type="text" class="form-control form-control-sm" id="editTitle" placeholder="月报标题">
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">本月总结</label>
+                        <textarea class="form-control form-control-sm" id="editSummary" rows="3"></textarea>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">已完成工作</label>
+                        <textarea class="form-control form-control-sm" id="editCompleted" rows="3"></textarea>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">待处理事项</label>
+                        <textarea class="form-control form-control-sm" id="editPending" rows="2"></textarea>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">问题与风险</label>
+                        <textarea class="form-control form-control-sm" id="editProblems" rows="2"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">总耗时(分钟)</label>
+                        <input type="number" class="form-control form-control-sm" id="editDuration" value="0" min="0">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
+                        <select class="form-select form-select-sm" id="editStatus">
+                            <option value="draft">草稿</option>
+                            <option value="submitted">已提交</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveData()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function loadData() {
+    const params = new URLSearchParams({ report_type: 'monthly' });
+    $.get('/api/reports/list?' + params.toString()).done(function(data) {
+        renderTable(data);
+    });
+}
+function renderTable(data) {
+    const tbody = $('#tableBody').empty();
+    if (!data || data.length === 0) {
+        tbody.append('<tr><td colspan="6" class="text-center text-muted py-4">暂无月报</td></tr>');
+        return;
+    }
+    data.forEach(function(item) {
+        const statusBadge = item.status === 'submitted'
+            ? '<span class="badge bg-success badge-status">已提交</span>'
+            : '<span class="badge bg-secondary badge-status">草稿</span>';
+        tbody.append(`
+            <tr>
+                <td>${item.report_date}</td>
+                <td><strong>${item.title}</strong></td>
+                <td>${item.user_name || '--'}</td>
+                <td>${item.duration_total || 0}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
+        `);
+    });
+}
+function showAddModal() {
+    $('#editId').val('');
+    $('#editMonth').val('');
+    $('#editTitle').val('');
+    $('#editSummary').val('');
+    $('#editCompleted').val('');
+    $('#editPending').val('');
+    $('#editProblems').val('');
+    $('#editDuration').val('0');
+    $('#editStatus').val('draft');
+    $('#modalTitle').text('新增月报');
+    new bootstrap.Modal($('#editModal')[0]).show();
+}
+function editData(id) {
+    $.get('/api/reports/' + id).done(function(item) {
+        $('#editId').val(item.id);
+        $('#editMonth').val(item.report_date);
+        $('#editTitle').val(item.title);
+        $('#editSummary').val(item.summary || '');
+        $('#editCompleted').val(item.completed_tasks || '');
+        $('#editPending').val(item.pending_tasks || '');
+        $('#editProblems').val(item.problems || '');
+        $('#editDuration').val(item.duration_total || 0);
+        $('#editStatus').val(item.status);
+        $('#modalTitle').text('编辑月报');
+        new bootstrap.Modal($('#editModal')[0]).show();
+    });
+}
+function saveData() {
+    const id = $('#editId').val();
+    const data = {
+        report_type: 'monthly',
+        report_date: $('#editMonth').val(),
+        title: $('#editTitle').val(),
+        summary: $('#editSummary').val() || '',
+        completed_tasks: $('#editCompleted').val() || '',
+        pending_tasks: $('#editPending').val() || '',
+        problems: $('#editProblems').val() || '',
+        duration_total: parseInt($('#editDuration').val()) || 0,
+        status: $('#editStatus').val()
+    };
+    if (!data.title) { showToast('请填写标题', 'warning'); return; }
+    const req = id ? $.ajax({ url: '/api/reports/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+                   : $.ajax({ url: '/api/reports', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+    req.done(function() { showToast(id ? '更新成功' : '新增成功'); bootstrap.Modal.getInstance($('#editModal')[0]).hide(); loadData(); })
+       .fail(function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); });
+}
+function deleteData(id) {
+    if (!confirm('确定删除？')) return;
+    $.ajax({ url: '/api/reports/' + id, method: 'DELETE' }).done(function() { showToast('删除成功'); loadData(); })
+       .fail(function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); });
+}
+$(function() { loadData(); });
+</script>
+{% endblock %}

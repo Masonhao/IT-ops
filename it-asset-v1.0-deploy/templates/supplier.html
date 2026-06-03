@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}供应商管理 - IT资产管理系统{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-building"></i> 供应商</h4>
+
+<div class="card p-3 mb-3">
+    <div class="d-flex justify-content-end">
+        <button class="btn btn-success" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增供应商</button>
+    </div>
+</div>
+
+<div class="card p-3">
+    <table class="table table-hover table-sm">
+        <thead><tr><th>名称</th><th>联系人</th><th>联系电话</th><th>邮箱</th><th>地址</th><th>操作</th></tr></thead>
+        <tbody id="supplierTable"></tbody>
+    </table>
+</div>
+
+<!-- 模态框 -->
+<div class="modal fade" id="supModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title" id="supModalTitle">新增供应商</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label">供应商名称 <span class="text-danger">*</span></label><input type="text" class="form-control" id="fName"></div>
+                    <div class="col-md-6"><label class="form-label">联系人</label><input type="text" class="form-control" id="fContactPerson"></div>
+                    <div class="col-md-4"><label class="form-label">联系电话</label><input type="text" class="form-control" id="fPhone"></div>
+                    <div class="col-md-8"><label class="form-label">邮箱</label><input type="email" class="form-control" id="fEmail"></div>
+                    <div class="col-12"><label class="form-label">地址</label><input type="text" class="form-control" id="fAddress"></div>
+                    <div class="col-12"><label class="form-label">备注</label><textarea class="form-control" id="fRemark" rows="2"></textarea></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveSupplier()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function() { loadSuppliers(); });
+
+function loadSuppliers() {
+    $.get('/api/suppliers', function(data) {
+        let html = '';
+        data.forEach(s => {
+            html += `<tr>
+                <td>${s.name}</td><td>${s.contact_person||'-'}</td><td>${s.contact_phone||'-'}</td>
+                <td>${s.contact_email||'-'}</td><td>${s.address||'-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-warning action-btn" onclick="editSupplier(${s.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger action-btn" onclick="deleteSupplier(${s.id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>`;
+        });
+        $('#supplierTable').html(html || '<tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>');
+    });
+}
+
+function openModal() {
+    $('#editId').val(''); $('#supModalTitle').text('新增供应商');
+    $('#supModal input, #supModal textarea').val('');
+    new bootstrap.Modal($('#supModal')).show();
+}
+
+function editSupplier(id) {
+    $.get('/api/suppliers', function(data) {
+        const s = data.find(i => i.id === id);
+        if (!s) return;
+        $('#editId').val(s.id); $('#supModalTitle').text('编辑供应商');
+        $('#fName').val(s.name); $('#fContactPerson').val(s.contact_person||'');
+        $('#fPhone').val(s.contact_phone||''); $('#fEmail').val(s.contact_email||'');
+        $('#fAddress').val(s.address||''); $('#fRemark').val(s.remark||'');
+        new bootstrap.Modal($('#supModal')).show();
+    });
+}
+
+function saveSupplier() {
+    const id = $('#editId').val();
+    const data = {
+        name: $('#fName').val(), contact_person: $('#fContactPerson').val(),
+        contact_phone: $('#fPhone').val(), contact_email: $('#fEmail').val(),
+        address: $('#fAddress').val(), remark: $('#fRemark').val()
+    };
+    if (!data.name) { showToast('请填写供应商名称', 'danger'); return; }
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `/api/suppliers/${id}` : '/api/suppliers';
+    $.ajax({ url, method, contentType: 'application/json', data: JSON.stringify(data),
+        success: function() { showToast('保存成功'); bootstrap.Modal.getInstance($('#supModal')).hide(); loadSuppliers(); },
+        error: function() { showToast('操作失败', 'danger'); }
+    });
+}
+
+function deleteSupplier(id) {
+    if (!confirm('确定删除此供应商？')) return;
+    $.ajax({ url: `/api/suppliers/${id}`, method: 'DELETE',
+        success: function() { showToast('删除成功'); loadSuppliers(); },
+        error: function() { showToast('删除失败', 'danger'); }
+    });
+}
+</script>
+{% endblock %}

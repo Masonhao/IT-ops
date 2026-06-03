@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 企业运维管理系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .login-card { background: #fff; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); width: 400px; overflow: hidden; }
+        .login-header { background: linear-gradient(135deg, #1a1a2e, #16213e); color: #fff; padding: 30px; text-align: center; }
+        .login-header h3 { margin: 0; font-weight: 700; }
+        .login-header p { margin: 5px 0 0; opacity: 0.7; font-size: 0.9rem; }
+        .login-body { padding: 30px; }
+        .form-control:focus { border-color: #16213e; box-shadow: 0 0 0 0.2rem rgba(22,33,62,0.25); }
+        .btn-login { background: linear-gradient(135deg, #1a1a2e, #16213e); color: #fff; border: none; padding: 10px; font-weight: 600; }
+        .btn-login:hover { background: linear-gradient(135deg, #16213e, #0f3460); color: #fff; }
+        .alert-msg { display: none; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-header">
+            <h3><i class="bi bi-gear-wide-connected"></i> 企业运维管理系统</h3>
+            <p>Enterprise Operations Management</p>
+        </div>
+        <div class="login-body">
+            <div class="alert alert-danger alert-msg" id="alertMsg" role="alert"></div>
+            <form id="loginForm">
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:0.9rem;">用户名</label>
+                    <input type="text" class="form-control" id="username" placeholder="请输入用户名" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="font-size:0.9rem;">密码</label>
+                    <input type="password" class="form-control" id="password" placeholder="请输入密码" required>
+                </div>
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-login" id="loginBtn">
+                        <i class="bi bi-box-arrow-in-right"></i> 登 录
+                    </button>
+                </div>
+                <div class="text-center mt-3" style="font-size:0.8rem; color:#6c8a9e;">
+                    默认账号：admin / 密码：admin
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.0/dist/jquery.min.js"></script>
+    <script>
+        $('#loginForm').on('submit', function(e) {
+            e.preventDefault();
+            const username = $('#username').val().trim();
+            const password = $('#password').val();
+            if (!username || !password) {
+                showAlert('请输入用户名和密码');
+                return;
+            }
+            $('#loginBtn').prop('disabled', true).html('<i class="bi bi-arrow-repeat"></i> 登录中...');
+            $.ajax({
+                url: '/login',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ username: username, password: password }),
+                success: function(res) {
+                    window.location.href = '/';
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON ? xhr.responseJSON.error : '登录失败';
+                    showAlert(msg);
+                    $('#loginBtn').prop('disabled', false).html('<i class="bi bi-box-arrow-in-right"></i> 登 录');
+                }
+            });
+        });
+
+        function showAlert(msg) {
+            $('#alertMsg').text(msg).show();
+            setTimeout(function() { $('#alertMsg').fadeOut(); }, 3000);
+        }
+    </script>
+</body>
+</html>

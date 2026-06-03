@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}首页概览 - 企业运维管理系统{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-speedometer2"></i> 首页概览</h4>
+
+<!-- 统计卡片 -->
+<div class="row mb-4" id="statCards">
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-number text-primary" id="totalCount">-</div>
+            <div class="stat-label">资产总数</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-number text-success" id="inUseCount">-</div>
+            <div class="stat-label">在用</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-number text-secondary" id="inStockCount">-</div>
+            <div class="stat-label">库存</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-number text-info" id="totalValue">-</div>
+            <div class="stat-label">资产总值</div>
+        </div>
+    </div>
+</div>
+
+<!-- 图表区域 -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h6 class="mb-3">资产分类分布</h6>
+            <canvas id="categoryChart" height="250"></canvas>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h6 class="mb-3">部门资产分布 TOP10</h6>
+            <canvas id="deptChart" height="250"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- 预警信息 -->
+<div class="card p-3 mb-4">
+    <h6 class="mb-3"><i class="bi bi-bell text-warning"></i> 到期预警</h6>
+    <div id="alertList">
+        <p class="text-muted">加载中...</p>
+    </div>
+</div>
+
+<!-- 最近操作 -->
+<div class="card p-3">
+    <h6 class="mb-3"><i class="bi bi-clock-history"></i> 最近资产</h6>
+    <table class="table table-sm">
+        <thead><tr><th>资产编号</th><th>名称</th><th>分类</th><th>状态</th><th>责任人</th><th>更新时间</th></tr></thead>
+        <tbody id="recentAssets"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+$(function() {
+    // 加载概览数据
+    $.get('/api/reports/overview', function(data) {
+        $('#totalCount').text(data.total_count);
+        $('#inUseCount').text(data.in_use_count);
+        $('#inStockCount').text(data.in_stock_count);
+        $('#totalValue').text(formatCurrency(data.total_value));
+
+        // 分类图表
+        const catLabels = data.category_stats.map(i => i.name || '未分类');
+        const catData = data.category_stats.map(i => i.count);
+        new Chart($('#categoryChart'), {
+            type: 'doughnut',
+            data: { labels: catLabels, datasets: [{ data: catData, borderWidth: 1 }] },
+            options: { responsive: true, plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } } }
+        });
+
+        // 部门图表
+        const deptData = data.dept_stats.slice(0, 10);
+        new Chart($('#deptChart'), {
+            type: 'bar',
+            data: {
+                labels: deptData.map(i => i.department || '未分配'),
+                datasets: [{ label: '资产数', data: deptData.map(i => i.count),
+                    backgroundColor: 'rgba(52,152,219,0.7)', borderRadius: 4 }]
+            },
+            options: { responsive: true, plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } } }
+        });
+    });
+
+    // 加载预警
+    $.get('/api/alerts', function(data) {
+        if (data.length === 0) {
+            $('#alertList').html('<p class="text-success">暂无到期预警</p>');
+            return;
+        }
+        let html = '<div class="list-group">';
+        data.slice(0, 10).forEach(a => {
+            const icon = a.level === 'danger' ? 'exclamation-triangle-fill text-danger' : 'exclamation-circle-fill text-warning';
+            html += `<div class="list-group-item list-group-item-action py-2">
+                <i class="bi bi-${icon}"></i> ${a.message}
+            </div>`;
+        });
+        html += '</div>';
+        $('#alertList').html(html);
+    });
+
+    // 最近资产
+    $.get('/api/assets?per_page=8', function(data) {
+        let html = '';
+        data.data.forEach(a => {
+            html += `<tr>
+                <td><a href="/asset">${a.asset_no}</a></td>
+                <td>${a.name}</td>
+                <td>${a.category_name || '-'}</td>
+                <td>${STATUS_MAP[a.status] || a.status}</td>
+                <td>${a.custodian || '-'}</td>
+                <td>${a.updated_at || '-'}</td>
+            </tr>`;
+        });
+        $('#recentAssets').html(html || '<tr><td colspan="6" class="text-center text-muted">暂无数据</td></tr>');
+    });
+});
+</script>
+{% endblock %}

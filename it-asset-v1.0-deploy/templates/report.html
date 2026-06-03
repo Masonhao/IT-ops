@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}报表统计 - IT资产管理系统{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-bar-chart-line"></i> 报表统计</h4>
+
+<!-- 概览卡片 -->
+<div class="row mb-4" id="overviewCards"></div>
+
+<!-- 图表区域 -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h6>资产状态分布</h6>
+            <canvas id="statusChart" height="280"></canvas>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h6>资产分类占比（按数量）</h6>
+            <canvas id="categoryChart" height="280"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- 部门分布 -->
+<div class="card p-3 mb-4">
+    <h6 class="mb-3">部门资产明细</h6>
+    <table class="table table-hover table-sm">
+        <thead><tr><th>部门</th><th>资产数量</th><th>资产总值(元)</th><th>占比</th></tr></thead>
+        <tbody id="deptTable"></tbody>
+    </table>
+</div>
+
+<!-- 折旧报表 -->
+<div class="card p-3 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0">折旧报表</h6>
+        <button class="btn btn-sm btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> 打印</button>
+    </div>
+    <table class="table table-sm table-bordered">
+        <thead><tr><th>资产编号</th><th>名称</th><th>分类</th><th>采购日期</th><th>原值</th><th>已用月数</th><th>月折旧额</th><th>累计折旧</th><th>账面净值</th></tr></thead>
+        <tbody id="depreciationTable"></tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+$(function() { loadOverview(); loadDepreciation(); });
+
+function loadOverview() {
+    $.get('/api/reports/overview', function(data) {
+        // 概览卡片
+        $('#overviewCards').html(`
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-primary">${data.total_count}</div><div class="stat-label">资产总数</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-success">${data.in_use_count}</div><div class="stat-label">在用</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-secondary">${data.in_stock_count}</div><div class="stat-label">库存</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-warning">${data.repair_count}</div><div class="stat-label">维修中</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-danger">${data.scrapped_count}</div><div class="stat-label">已报废</div></div></div>
+            <div class="col-md-2"><div class="card stat-card"><div class="stat-number text-info">${formatCurrency(data.total_value)}</div><div class="stat-label">资产总值</div></div></div>
+        `);
+
+        // 状态饼图
+        const statusColors = {
+            in_stock: '#6c757d', in_use: '#198754', repair: '#ffc107', scrapped: '#dc3545', disposed: '#212529'
+        };
+        new Chart($('#statusChart'), {
+            type: 'pie',
+            data: {
+                labels: data.status_stats.map(s => ({in_stock:'库存',in_use:'在用',repair:'维修',scrapped:'报废',disposed:'已处置'}[s.status]||s.status)),
+                datasets: [{ data: data.status_stats.map(s => s.count),
+                    backgroundColor: data.status_stats.map(s => statusColors[s.status]||'#adb5bd'),
+                    borderWidth: 2, borderColor: '#fff' }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'right' } } }
+        });
+
+        // 分类环形图
+        new Chart($('#categoryChart'), {
+            type: 'doughnut',
+            data: {
+                labels: data.category_stats.map(c => c.name || '未分类'),
+                datasets: [{ data: data.category_stats.map(c => c.count), borderWidth: 1 }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'right', labels: { boxWidth: 12 } } } }
+        });
+
+        // 部门表格
+        const totalVal = (data.dept_stats || []).reduce((s, d) => s + (d.total_value || 0), 0) || 1;
+        let html = '';
+        (data.dept_stats || []).forEach(d => {
+            html += `<tr>
+                <td>${d.department||'未分配'}</td>
+                <td>${d.count}</td>
+                <td>${formatCurrency(d.total_value)}</td>
+                <td>
+                    <div class="progress" style="height:18px"><div class="progress-bar bg-info" style="width:${(d.total_value||0)/totalVal*100}%">${((d.total_value||0)/totalVal*100).toFixed(1)}%</div></div>
+                </td>
+            </tr>`;
+        });
+        $('#deptTable').html(html || '<tr><td colspan="4" class="text-center text-muted">暂无数据</td></tr>');
+    });
+}
+
+function loadDepreciation() {
+    $.get('/api/reports/depreciation', function(data) {
+        let html = '';
+        data.forEach(a => {
+            html += `<tr>
+                <td>${a.asset_no}</td><td>${a.name}</td><td>${a.category_name||'-'}</td>
+                <td>${formatDate(a.purchase_date)}</td>
+                <td>${formatCurrency(a.purchase_price)}</td>
+                <td>${a.months_used||0}</td>
+                <td>${formatCurrency(a.monthly_depreciation)}</td>
+                <td>${formatCurrency(a.accumulated_depreciation)}</td>
+                <td><strong>${formatCurrency(a.book_value)}</strong></td>
+            </tr>`;
+        });
+        $('#depreciationTable').html(html || '<tr><td colspan="9" class="text-center text-muted">暂无有价值的资产数据</td></tr>');
+    });
+}
+</script>
+{% endblock %}

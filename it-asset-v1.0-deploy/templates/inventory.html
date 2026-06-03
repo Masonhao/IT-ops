@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}盘点管理 - IT资产管理系统{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-clipboard-check"></i> 盘点管理</h4>
+
+<div class="card p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center">
+        <span>创建盘点任务后，系统自动将所有在用/库存资产加入盘点明细</span>
+        <button class="btn btn-success" onclick="openNewTaskModal()"><i class="bi bi-plus-lg"></i> 新建盘点任务</button>
+    </div>
+</div>
+
+<!-- 任务列表 -->
+<div class="card p-3 mb-3">
+    <h6 class="mb-3">盘点任务列表</h6>
+    <table class="table table-hover table-sm">
+        <thead><tr><th>任务编号</th><th>标题</th><th>状态</th><th>创建人</th><th>创建时间</th><th>完成时间</th><th>操作</th></tr></thead>
+        <tbody id="taskTable"></tbody>
+    </table>
+</div>
+
+<!-- 新建任务模态框 -->
+<div class="modal fade" id="newTaskModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">新建盘点任务</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-3"><label class="form-label">任务名称 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="fTitle" placeholder="如：2026年Q2资产盘点"></div>
+                <div class="mb-3"><label class="form-label">备注</label><textarea class="form-control" id="fRemark" rows="2"></textarea></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="createTask()">创建并开始</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 盘点明细模态框 -->
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailTitle">盘点明细</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-3 text-center">
+                        <div class="h4 mb-0" id="totalCnt">0</div><small class="text-muted">总资产数</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="h4 mb-0 text-success" id="matchedCnt">0</div><small class="text-muted">相符</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="h4 mb-0 text-warning" id="pendingCnt">0</div><small class="text-muted">待确认</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="h4 mb-0 text-danger" id="mismatchCnt">0</div><small class="text-muted">不符</small>
+                    </div>
+                </div>
+                <table class="table table-sm table-bordered">
+                    <thead><tr><th>资产编号</th><th>名称</th><th>预期状态</th><th>实际状态</th><th>是否相符</th><th>操作人</th><th>操作</th></tr></thead>
+                    <tbody id="itemTable"></tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" onclick="completeTask()" id="completeBtn" style="display:none">完成盘点</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function() { loadTasks(); });
+
+function loadTasks() {
+    $.get('/api/inventories', function(data) {
+        let html = '';
+        const statusMap = { pending: '<span class="badge bg-secondary">待开始</span>',
+            in_progress: '<span class="badge bg-primary">进行中</span>', completed: '<span class="badge bg-success">已完成</span>' };
+        data.forEach(t => {
+            let btnHtml = '';
+            if (t.status === 'pending') {
+                btnHtml = `<button class="btn btn-sm btn-outline-primary action-btn" onclick="openDetail(${t.id})"><i class="bi bi-search"></i> 开始盘点</button>`;
+            } else if (t.status === 'in_progress') {
+                btnHtml = `<button class="btn btn-sm btn-outline-success action-btn" onclick="openDetail(${t.id})"><i class="bi bi-eye"></i> 查看详情</button>`;
+            } else if (t.status === 'completed') {
+                btnHtml = `<button class="btn btn-sm btn-outline-info action-btn" onclick="openDetail(${t.id})"><i class="bi bi-eye"></i> 查看结果</button>`;
+            }
+            html += `<tr>
+                <td>${t.task_no}</td><td>${t.title}</td><td>${statusMap[t.status]||t.status}</td>
+                <td>${t.created_by||'-'}</td><td>${t.created_at||'-'}</td><td>${t.completed_at||'-'}</td>
+                <td>${btnHtml}</td>
+            </tr>`;
+        });
+        $('#taskTable').html(html || '<tr><td colspan="7" class="text-center text-muted">暂无盘点任务</td></tr>');
+    });
+}
+
+function openNewTaskModal() {
+    $('#fTitle').val(''); $('#fRemark').val('');
+    new bootstrap.Modal($('#newTaskModal')).show();
+}
+
+function createTask() {
+    const data = { title: $('#fTitle').val(), remark: $('#fRemark').val(), created_by: '系统' };
+    if (!data.title) { showToast('请填写任务名称', 'danger'); return; }
+    $.ajax({ url: '/api/inventories', method: 'POST', contentType: 'application/json',
+        data: JSON.stringify(data),
+        success: function() { showToast('任务创建成功，已自动加载所有资产到盘点明细');
+            bootstrap.Modal.getInstance($('#newTaskModal')).hide(); loadTasks(); },
+        error: function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); }
+    });
+}
+
+let currentTaskId = null;
+function openDetail(taskId) {
+    currentTaskId = taskId;
+    $.get(`/api/inventories/${taskId}`, function(data) {
+        $('#detailTitle').text(`盘点明细 - ${data.task_no} (${data.title})`);
+
+        const total = (data.items || []).length;
+        const matched = (data.items || []).filter(i => i.is_matched).length;
+        const pending = (data.items || []).filter(i => i.check_time === null).length;
+        const mismatch = total - matched;
+
+        $('#totalCnt').text(total); $('#matchedCnt').text(matched);
+        $('#pendingCnt').text(pending); $('#mismatchCnt').text(mismatch);
+
+        let html = '';
+        (data.items || []).forEach(item => {
+            const statusIcon = item.is_matched ? '<i class="bi bi-check-circle-fill text-success"></i>' :
+                              item.check_time !== null ? '<i class="bi bi-x-circle-fill text-danger"></i>' :
+                              '<i class="bi bi-circle text-muted"></i>';
+            html += `<tr id="row-${item.asset_id}">
+                <td>${item.asset_no||'-'}</td><td>${item.asset_name||'-'}</td>
+                <td>${STATUS_MAP[item.expected_status]||item.expected_status||'-'}</td>
+                <td>${STATUS_MAP[item.actual_status]||item.actual_status||'<em class="text-muted">待确认</em>'}</td>
+                <td>${statusIcon}</td>
+                <td>${item.operator||'-'}</td>
+                <td>
+                    ${!item.check_time ? `
+                        <select class="form-select form-select-sm" style="width:auto;display:inline-block" id="sel-${item.asset_id}">
+                            <option value="">请选择</option>
+                            <option value="in_stock">库存</option><option value="in_use">在用</option>
+                            <option value="repair">维修</option><option value="scrapped">报废(盘亏)</option>
+                        </select>
+                        <button class="btn btn-sm btn-primary action-btn" onclick="checkItem(${item.asset_id})">确认</button>` :
+                        `<span class="text-muted">已确认</span>`
+                    }
+                </td>
+            </tr>`;
+        });
+        $('#itemTable').html(html);
+        $('#completeBtn').css('display', data.status === 'in_progress' || data.status === 'pending' ? '' : 'none');
+        new bootstrap.Modal($('#detailModal')).show();
+
+        // 打开详情后自动将任务状态更新为进行中
+        if (data.status === 'pending') {
+            $.ajax({
+                url: `/api/inventories/${currentTaskId}/check`,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ asset_id: 0, actual_status: '', operator: '系统' }),
+                success: function() {},
+                error: function() {}
+            });
+            // 直接在API端更新任务状态
+            $.ajax({
+                url: `/api/inventories/${taskId}/start`,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({}),
+                success: function() { loadTasks(); },
+                error: function() { /* 兼容：如果接口不存在也不影响使用 */ }
+            });
+        }
+    });
+}
+
+function checkItem(assetId) {
+    const selVal = $(`#sel-${assetId}`).val();
+    if (!selVal) { showToast('请选择实际状态', 'warning'); return; }
+    $.ajax({ url: `/api/inventories/${currentTaskId}/check`, method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ asset_id: assetId, actual_status: selVal, operator: '系统' }),
+        success: function() { showToast('确认成功'); openDetail(currentTaskId); },
+        error: function() { showToast('操作失败', 'danger'); }
+    });
+}
+
+function completeTask() {
+    if (!confirm('确定完成此盘点？完成后不可再修改。')) return;
+    $.ajax({ url: `/api/inventories/${currentTaskId}/complete`, method: 'POST',
+        success: function() { showToast('盘点完成'); bootstrap.Modal.getInstance($('#detailModal')).hide(); loadTasks(); },
+        error: function() { showToast('操作失败', 'danger'); }
+    });
+}
+</script>
+{% endblock %}

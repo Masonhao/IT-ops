@@ -1,0 +1,506 @@
+{% extends "base.html" %}
+{% block title %}每日巡检 - 企业运维管理系统{% endblock %}
+{% block page_title %}每日巡检{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+
+    <!-- 今日待完成任务提示栏 -->
+    <div id="todayTasksAlert" class="d-none mb-3">
+        <div class="card border-warning">
+            <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center py-2">
+                <span class="fw-bold text-warning">
+                    <i class="bi bi-alarm me-1"></i>今日分配的巡检任务
+                    <span id="pendingTaskBadge" class="badge bg-danger ms-1">0</span>
+                </span>
+                <button class="btn btn-sm btn-outline-secondary py-0" type="button" data-bs-toggle="collapse" data-bs-target="#taskListCollapse">
+                    <i class="bi bi-chevron-down"></i>
+                </button>
+            </div>
+            <div class="collapse show" id="taskListCollapse">
+                <div class="card-body p-2">
+                    <div id="todayTasksList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 操作栏 -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap filter-bar">
+            <input type="date" class="form-control form-control-sm" id="filterDate" value="" onchange="loadData()">
+            <select class="form-select form-select-sm" id="filterStatus" onchange="loadData()">
+                <option value="">全部状态</option>
+                <option value="normal">正常</option>
+                <option value="abnormal">异常</option>
+            </select>
+            <select class="form-select form-select-sm" id="filterEquip" onchange="loadData()">
+                <option value="">全部设备</option>
+            </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showAddModal()">
+            <i class="bi bi-plus-lg"></i> 新增巡检
+        </button>
+    </div>
+
+    <!-- 巡检列表 -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0" id="dataTable">
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>设备</th>
+                            <th>类型</th>
+                            <th>工程师</th>
+                            <th>状态</th>
+                            <th>耗时(分)</th>
+                            <th style="width:100px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增/编辑巡检模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">新增巡检</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <input type="hidden" id="editTaskRecordId">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">巡检日期</label>
+                        <input type="date" class="form-control form-control-sm" id="editDate" value="">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">来自巡检任务（可选）</label>
+                        <select class="form-select form-select-sm" id="editTaskRecord" onchange="onTaskRecordChange()">
+                            <option value="">-- 直接填写 --</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">选择设备</label>
+                        <select class="form-select form-select-sm" id="editEquipment" onchange="loadTemplateItems()">
+                            <option value="">请选择设备</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">巡检结果</label>
+                        <select class="form-select form-select-sm" id="editStatus">
+                            <option value="normal">正常</option>
+                            <option value="abnormal">异常</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">耗时(分钟)</label>
+                        <input type="number" class="form-control form-control-sm" id="editDuration" value="30" min="0">
+                    </div>
+                    <div class="col-md-3 d-none" id="abnormalRow">
+                        <label class="form-label fw-bold text-danger" style="font-size:0.85rem;">异常说明</label>
+                        <input type="text" class="form-control form-control-sm border-danger" id="editAbnormal" placeholder="描述异常现象...">
+                    </div>
+                    <div class="col-md-6 d-none" id="actionRow">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">处理动作</label>
+                        <input type="text" class="form-control form-control-sm" id="editAction" placeholder="已执行或计划执行的处理措施...">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">备注</label>
+                        <input type="text" class="form-control form-control-sm" id="editRemark" placeholder="补充说明...">
+                    </div>
+                </div>
+
+                <!-- 巡检检查项 -->
+                <div id="itemsContainer" class="d-none mt-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0 fw-bold">巡检检查项</h6>
+                        <span class="text-muted" id="itemsDeviceType" style="font-size:0.8rem;"></span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:220px;">检查项目</th>
+                                    <th style="width:80px;">必填</th>
+                                    <th>检查值</th>
+                                    <th style="width:120px;">正常范围</th>
+                                    <th style="width:80px;">状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="checkItemsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveData()">保存巡检记录</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let equipList = [];
+let todayTaskRecords = [];
+
+// ---- 加载今日任务记录 ----
+function loadTodayTasks() {
+    $.get('/api/inspection/tasks/today').done(function(data) {
+        todayTaskRecords = data;
+        const pending = data.filter(r => r.status === 'pending');
+
+        // 填充任务选择器
+        const sel = $('#editTaskRecord');
+        sel.find('option:not(:first)').remove();
+        data.forEach(function(r) {
+            const statusText = r.status === 'completed' ? '✓' : r.status === 'overdue' ? '⚠' : '●';
+            sel.append(`<option value="${r.id}" data-equip="${r.equipment_id||''}" data-type="${r.equip_type||''}"
+                data-name="${r.task_name}">${statusText} ${r.task_name}${r.equipment_name ? ' - '+r.equipment_name : ''}</option>`);
+        });
+
+        if (data.length === 0) return;
+        $('#todayTasksAlert').removeClass('d-none');
+        $('#pendingTaskBadge').text(pending.length);
+
+        const ul = $('#todayTasksList').empty();
+        const now = new Date();
+        data.forEach(function(r) {
+            const overdue = r.status === 'pending' && r.reminder_time && now.toTimeString().slice(0,5) > r.reminder_time;
+            const badgeClass = r.status === 'completed' ? 'bg-success' : overdue ? 'bg-danger' : 'bg-warning text-dark';
+            const badgeText = r.status === 'completed' ? '已完成' : overdue ? '已逾期' : `${r.reminder_time}前完成`;
+            const eq = r.equipment_name ? r.equipment_name : `[${EQUIP_TYPE_MAP[r.equip_type]||r.equip_type}]类型巡检`;
+            ul.append(`
+                <div class="d-flex align-items-center justify-content-between py-1 border-bottom">
+                    <div>
+                        <span class="fw-bold me-2">${r.task_name}</span>
+                        <small class="text-muted">${eq}</small>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge ${badgeClass}">${badgeText}</span>
+                        ${r.status === 'pending' ? `<button class="btn btn-outline-primary btn-sm py-0 px-2" onclick="startTaskInspection(${r.id})">开始巡检</button>` : ''}
+                    </div>
+                </div>
+            `);
+        });
+    });
+}
+
+function startTaskInspection(recordId) {
+    const r = todayTaskRecords.find(x => x.id === recordId);
+    if (!r) return;
+    showAddModal();
+    setTimeout(function() {
+        $('#editTaskRecord').val(recordId);
+        onTaskRecordChange();
+    }, 300);
+}
+
+function onTaskRecordChange() {
+    const rid = $('#editTaskRecord').val();
+    if (!rid) return;
+    const r = todayTaskRecords.find(x => x.id == rid);
+    if (!r) return;
+    if (r.equipment_id) {
+        $('#editEquipment').val(r.equipment_id);
+        loadTemplateItems();
+    } else if (r.equip_type) {
+        // 按设备类型任务：不自动选设备，但自动设置类型筛选
+        $('#editEquipment').val('');
+    }
+}
+
+// ---- 设备下拉 ----
+function loadEquipments() {
+    $.get('/api/equipment').done(function(data) {
+        equipList = data;
+        const sel = $('#editEquipment');
+        sel.find('option:not(:first)').remove();
+        const filterSel = $('#filterEquip');
+        filterSel.find('option:not(:first)').remove();
+        data.forEach(function(e) {
+            sel.append(`<option value="${e.id}" data-type="${e.equip_type}">[${EQUIP_TYPE_MAP[e.equip_type]||e.equip_type}] ${e.equip_no} - ${e.name}</option>`);
+            filterSel.append(`<option value="${e.id}">${e.equip_no} - ${e.name}</option>`);
+        });
+    });
+}
+
+// ---- 加载巡检模板检查项 ----
+function loadTemplateItems() {
+    const equipId = $('#editEquipment').val();
+    if (!equipId) {
+        $('#itemsContainer').addClass('d-none');
+        return;
+    }
+    const equip = equipList.find(e => e.id == equipId);
+    if (!equip) return;
+    const equipType = equip.equip_type;
+    $('#itemsDeviceType').text(`设备类型: ${EQUIP_TYPE_MAP[equipType]||equipType}  |  ${equip.equip_no} - ${equip.name}`);
+
+    $.get('/api/inspection/templates?equip_type=' + equipType).done(function(templates) {
+        $('#itemsContainer').removeClass('d-none');
+        const tbody = $('#checkItemsBody').empty();
+        if (!templates.length) {
+            tbody.append('<tr><td colspan="5" class="text-center text-muted">暂无巡检模板</td></tr>');
+            return;
+        }
+        templates.forEach(function(t) {
+            const reqBadge = t.is_required ? '<span class="badge bg-danger" style="font-size:0.7rem;">必填</span>' : '<span class="text-muted" style="font-size:0.75rem;">可选</span>';
+            let inputHtml = '';
+            if (t.item_type === 'checkbox') {
+                inputHtml = `<div class="form-check form-check-inline">
+                    <input class="form-check-input check-item" type="checkbox" id="item_${t.id}" data-tid="${t.id}" data-name="${t.item_name}" data-type="checkbox" data-range="${t.normal_range||''}">
+                    <label class="form-check-label" for="item_${t.id}">正常</label>
+                </div>`;
+            } else if (t.item_type === 'number') {
+                inputHtml = `<div class="input-group input-group-sm" style="max-width:200px;">
+                    <input type="number" step="0.1" class="form-control form-control-sm check-item" id="item_${t.id}"
+                        data-tid="${t.id}" data-name="${t.item_name}" data-type="number" data-range="${t.normal_range||''}"
+                        placeholder="输入数值" oninput="checkRange(this)">
+                    ${t.unit ? `<span class="input-group-text">${t.unit}</span>` : ''}
+                </div>`;
+            } else {
+                inputHtml = `<input type="text" class="form-control form-control-sm check-item" id="item_${t.id}"
+                    data-tid="${t.id}" data-name="${t.item_name}" data-type="text" data-range="${t.normal_range||''}"
+                    placeholder="${t.item_desc||''}">`;
+            }
+            const rangeHtml = t.normal_range ? `<small class="text-success">${t.normal_range}</small>${t.unit ? ' <small class="text-muted">'+t.unit+'</small>' : ''}` : '--';
+            tbody.append(`<tr id="itemRow_${t.id}">
+                <td><small class="fw-bold">${t.item_name}</small>${t.item_desc ? '<br><small class="text-muted">'+t.item_desc+'</small>' : ''}</td>
+                <td>${reqBadge}</td>
+                <td>${inputHtml}</td>
+                <td>${rangeHtml}</td>
+                <td id="itemStatus_${t.id}"><span class="badge bg-secondary" style="font-size:0.7rem;">待填</span></td>
+            </tr>`);
+        });
+    });
+}
+
+function checkRange(el) {
+    const val = parseFloat($(el).val());
+    const range = $(el).data('range') || '';
+    const tid = $(el).data('tid');
+    if (!range || isNaN(val)) return;
+    let ok = true;
+    const m_lt = range.match(/^<(\d+\.?\d*)$/);
+    const m_gt = range.match(/^>(\d+\.?\d*)$/);
+    const m_le = range.match(/^<=(\d+\.?\d*)$/);
+    const m_ge = range.match(/^>=(\d+\.?\d*)$/);
+    const m_range = range.match(/^(\d+\.?\d*)-(\d+\.?\d*)$/);
+    if (m_lt) ok = val < parseFloat(m_lt[1]);
+    else if (m_gt) ok = val > parseFloat(m_gt[1]);
+    else if (m_le) ok = val <= parseFloat(m_le[1]);
+    else if (m_ge) ok = val >= parseFloat(m_ge[1]);
+    else if (m_range) ok = val >= parseFloat(m_range[1]) && val <= parseFloat(m_range[2]);
+
+    $(el).toggleClass('border-danger text-danger', !ok).toggleClass('border-success', ok);
+    $(`#itemStatus_${tid}`).html(ok
+        ? '<span class="badge bg-success" style="font-size:0.7rem;">正常</span>'
+        : '<span class="badge bg-danger" style="font-size:0.7rem;">异常</span>');
+}
+
+// ---- 巡检列表 ----
+function loadData() {
+    const params = new URLSearchParams({
+        date: $('#filterDate').val(),
+        status: $('#filterStatus').val(),
+        equipment_id: $('#filterEquip').val()
+    });
+    $.get('/api/inspections?' + params).done(function(data) {
+        const tbody = $('#tableBody').empty();
+        if (!data || !data.length) {
+            tbody.append('<tr><td colspan="7" class="text-center text-muted py-4">暂无巡检记录</td></tr>');
+            return;
+        }
+        data.forEach(function(item) {
+            const statusBadge = item.status === 'abnormal'
+                ? '<span class="badge bg-danger badge-status">异常</span>'
+                : '<span class="badge bg-success badge-status">正常</span>';
+            tbody.append(`<tr>
+                <td>${item.inspection_date}</td>
+                <td><strong>${item.equipment_name||'--'}</strong><small class="d-block text-muted">${item.equip_no||''}</small></td>
+                <td><span class="badge bg-info text-dark" style="font-size:0.75rem;">${EQUIP_TYPE_MAP[item.equip_type]||item.equip_type||'--'}</span></td>
+                <td>${item.engineer_name||'--'}</td>
+                <td>${statusBadge}</td>
+                <td>${item.duration_minutes||0}</td>
+                <td>
+                    <button class="btn btn-outline-info btn-sm action-btn" onclick="viewInspection(${item.id})"><i class="bi bi-eye"></i></button>
+                    <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>`);
+        });
+    });
+}
+
+function showAddModal() {
+    $('#editId').val('');
+    $('#editTaskRecord').val('');
+    $('#editTaskRecordId').val('');
+    $('#editDate').val(new Date().toISOString().slice(0,10));
+    $('#editEquipment').val('');
+    $('#editStatus').val('normal');
+    $('#editDuration').val('30');
+    $('#editAbnormal').val('');
+    $('#editAction').val('');
+    $('#editRemark').val('');
+    $('#abnormalRow').addClass('d-none');
+    $('#actionRow').addClass('d-none');
+    $('#itemsContainer').addClass('d-none');
+    $('#checkItemsBody').empty();
+    $('#modalTitle').text('新增巡检记录');
+    new bootstrap.Modal($('#editModal')[0]).show();
+}
+
+$('#editStatus').on('change', function() {
+    const isAbnormal = $(this).val() === 'abnormal';
+    $('#abnormalRow').toggleClass('d-none', !isAbnormal);
+    $('#actionRow').toggleClass('d-none', !isAbnormal);
+});
+
+function editData(id) {
+    $.get('/api/inspections/' + id).done(function(item) {
+        $('#editId').val(item.id);
+        $('#editDate').val(item.inspection_date);
+        $('#editEquipment').val(item.equipment_id);
+        $('#editStatus').val(item.status);
+        $('#editDuration').val(item.duration_minutes||0);
+        $('#editAbnormal').val(item.abnormal_items||'');
+        $('#editAction').val(item.action_taken||'');
+        $('#editRemark').val(item.remark||'');
+        const isAbnormal = item.status === 'abnormal';
+        $('#abnormalRow').toggleClass('d-none', !isAbnormal);
+        $('#actionRow').toggleClass('d-none', !isAbnormal);
+        $('#modalTitle').text('编辑巡检记录');
+        loadTemplateItems();
+        new bootstrap.Modal($('#editModal')[0]).show();
+        setTimeout(function() {
+            if (item.items && item.items.length) {
+                item.items.forEach(function(ci) {
+                    const el = $(`[data-tid="${ci.id}"]`);
+                    if (!el.length) return;
+                    if (ci.type === 'checkbox') el.prop('checked', ci.value === '正常' || ci.value === true);
+                    else el.val(ci.value);
+                });
+            }
+        }, 500);
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '加载失败', 'danger'); });
+}
+
+function viewInspection(id) {
+    $.get('/api/inspections/' + id).done(function(item) {
+        let itemsHtml = '';
+        if (item.items && item.items.length) {
+            itemsHtml = '<h6 class="mt-3">巡检检查项：</h6><table class="table table-sm table-bordered"><thead><tr><th>项目</th><th>检查值</th><th>正常范围</th></tr></thead><tbody>';
+            item.items.forEach(function(ci) {
+                itemsHtml += `<tr><td>${ci.name}</td><td>${ci.value}</td><td>${ci.range||'--'}</td></tr>`;
+            });
+            itemsHtml += '</tbody></table>';
+        }
+        const html = `<div class="modal fade" id="viewModal" tabindex="-1">
+            <div class="modal-dialog modal-lg"><div class="modal-content">
+                <div class="modal-header"><h5>巡检详情</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-6"><strong>日期：</strong>${item.inspection_date}</div>
+                        <div class="col-md-6"><strong>设备：</strong>${item.equipment_name||'--'} (${item.equip_no||''})</div>
+                        <div class="col-md-6"><strong>工程师：</strong>${item.engineer_name||'--'}</div>
+                        <div class="col-md-6"><strong>结果：</strong>${item.status==='abnormal'?'<span class="text-danger fw-bold">异常</span>':'<span class="text-success">正常</span>'}</div>
+                        ${item.abnormal_items ? `<div class="col-12"><strong class="text-danger">异常说明：</strong>${item.abnormal_items}</div>` : ''}
+                        ${item.action_taken ? `<div class="col-12"><strong>处理措施：</strong>${item.action_taken}</div>` : ''}
+                        <div class="col-md-6"><strong>耗时：</strong>${item.duration_minutes||0} 分钟</div>
+                        ${item.remark ? `<div class="col-12"><strong>备注：</strong>${item.remark}</div>` : ''}
+                    </div>
+                    ${itemsHtml}
+                </div>
+            </div></div>
+        </div>`;
+        $('body').append(html);
+        new bootstrap.Modal($('#viewModal')[0]).show();
+        $('#viewModal').on('hidden.bs.modal', function() { $(this).remove(); });
+    });
+}
+
+function saveData() {
+    const equipId = $('#editEquipment').val();
+    if (!equipId) { showToast('请选择巡检设备', 'warning'); return; }
+
+    // 收集检查项
+    const items = [];
+    let hasAbnormalItem = false;
+    $('.check-item').each(function() {
+        const type = $(this).data('type');
+        let value;
+        if (type === 'checkbox') value = $(this).is(':checked') ? '正常' : '异常';
+        else value = $(this).val();
+        if (value === '异常') hasAbnormalItem = true;
+        items.push({ id: $(this).data('tid'), name: $(this).data('name'), type: type, value: value, range: $(this).data('range') });
+    });
+
+    let status = $('#editStatus').val();
+    if (hasAbnormalItem && status === 'normal') {
+        if (!confirm('检测到部分检查项为异常，是否将巡检结果标记为异常？\n点确定=标记异常，点取消=保持正常')) {
+            status = 'abnormal';
+        }
+    }
+
+    const data = {
+        inspection_date: $('#editDate').val(),
+        equipment_id: parseInt(equipId),
+        status: status,
+        items_json: JSON.stringify(items),
+        abnormal_items: $('#editAbnormal').val() || '',
+        action_taken: $('#editAction').val() || '',
+        duration_minutes: parseInt($('#editDuration').val()) || 0,
+        remark: $('#editRemark').val() || ''
+    };
+
+    const id = $('#editId').val();
+    const taskRecordId = $('#editTaskRecord').val();
+
+    const req = id
+        ? $.ajax({ url: '/api/inspections/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+        : $.ajax({ url: '/api/inspections', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+
+    req.done(function(res) {
+        // 如果来自任务记录，自动标记完成
+        if (!id && taskRecordId && res.id) {
+            $.ajax({
+                url: '/api/inspection/tasks/records/' + taskRecordId,
+                method: 'PUT',
+                contentType: 'application/json',
+                data: JSON.stringify({ inspection_id: res.id })
+            });
+        }
+        showToast(id ? '更新成功' : '巡检记录已保存');
+        bootstrap.Modal.getInstance($('#editModal')[0]).hide();
+        loadData();
+        loadTodayTasks();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); });
+}
+
+function deleteData(id) {
+    if (!confirm('确定删除此巡检记录？')) return;
+    $.ajax({ url: '/api/inspections/' + id, method: 'DELETE' }).done(function() {
+        showToast('删除成功'); loadData();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); });
+}
+
+$(function() {
+    $('#filterDate').val(new Date().toISOString().slice(0,10));
+    loadEquipments();
+    loadTodayTasks();
+    loadData();
+});
+</script>
+{% endblock %}

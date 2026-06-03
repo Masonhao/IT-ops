@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% block title %}用户管理 - 企业运维管理系统{% endblock %}
+{% block page_title %}用户管理{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+    <!-- 操作栏 -->
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex gap-2 align-items-center flex-wrap filter-bar">
+            <input type="text" class="form-control form-control-sm search-bar" id="searchInput" placeholder="搜索用户名/姓名..." oninput="debounceSearch()">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showAddModal()">
+            <i class="bi bi-plus-lg"></i> 新增用户
+        </button>
+    </div>
+
+    <!-- 用户表格 -->
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0" id="dataTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>用户名</th>
+                            <th>姓名</th>
+                            <th>角色</th>
+                            <th>权限模块</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 新增/编辑用户模态框 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">新增用户</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">用户名 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" id="editUsername" placeholder="登录用户名">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">密码 <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control form-control-sm" id="editPassword" placeholder="默认123456">
+                        <small class="text-muted" style="font-size:0.75rem;">新建时必填，编辑时留空表示不修改</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">姓名</label>
+                        <input type="text" class="form-control form-control-sm" id="editRealName">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">角色</label>
+                        <select class="form-select form-select-sm" id="editRole" onchange="onRoleChange()">
+                            <option value="engineer">工程师</option>
+                            <option value="admin">管理员</option>
+                        </select>
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">授权模块</label>
+                        <div class="border rounded p-2" id="permCheckboxes">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_all" onchange="toggleAllPerms(this)">
+                                <label class="form-check-label" for="perm_all" style="font-size:0.85rem;">全部权限</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_asset" value="asset">
+                                <label class="form-check-label" for="perm_asset" style="font-size:0.85rem;">资产管理</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_category" value="category">
+                                <label class="form-check-label" for="perm_category" style="font-size:0.85rem;">资产分类</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_software" value="software">
+                                <label class="form-check-label" for="perm_software" style="font-size:0.85rem;">软件授权</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_supplier" value="supplier">
+                                <label class="form-check-label" for="perm_supplier" style="font-size:0.85rem;">供应商</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_contract" value="contract">
+                                <label class="form-check-label" for="perm_contract" style="font-size:0.85rem;">合同管理</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_domain" value="domain">
+                                <label class="form-check-label" for="perm_domain" style="font-size:0.85rem;">域名管理</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_equipment" value="equipment">
+                                <label class="form-check-label" for="perm_equipment" style="font-size:0.85rem;">设备台账</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_inspection" value="inspection">
+                                <label class="form-check-label" for="perm_inspection" style="font-size:0.85rem;">每日巡检</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_worklog" value="worklog">
+                                <label class="form-check-label" for="perm_worklog" style="font-size:0.85rem;">工作日志</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_inventory" value="inventory">
+                                <label class="form-check-label" for="perm_inventory" style="font-size:0.85rem;">盘点管理</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_alert" value="alert">
+                                <label class="form-check-label" for="perm_alert" style="font-size:0.85rem;">到期预警</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_report" value="report">
+                                <label class="form-check-label" for="perm_report" style="font-size:0.85rem;">报表统计</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_report_daily" value="report_daily">
+                                <label class="form-check-label" for="perm_report_daily" style="font-size:0.85rem;">日报管理</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_report_weekly" value="report_weekly">
+                                <label class="form-check-label" for="perm_report_weekly" style="font-size:0.85rem;">周报管理</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_report_monthly" value="report_monthly">
+                                <label class="form-check-label" for="perm_report_monthly" style="font-size:0.85rem;">月报管理</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="perm_user" value="user">
+                                <label class="form-check-label" for="perm_user" style="font-size:0.85rem;">用户管理</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
+                        <select class="form-select form-select-sm" id="editIsActive">
+                            <option value="1">启用</option>
+                            <option value="0">禁用</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveData()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let searchTimer = null;
+
+const PERM_KEYS = ['asset','category','software','supplier','contract','domain',
+                   'equipment','inspection','worklog','inventory','alert','report',
+                   'report_daily','report_weekly','report_monthly','user'];
+
+function debounceSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { loadData(); }, 400);
+}
+
+function onRoleChange() {
+    if ($('#editRole').val() === 'admin') {
+        $('#perm_all').prop('checked', true).trigger('change');
+        PERM_KEYS.forEach(k => $(`#perm_${k}`).prop('checked', true));
+    }
+}
+
+function toggleAllPerms(el) {
+    PERM_KEYS.forEach(k => $(`#perm_${k}`).prop('checked', $(el).is(':checked')));
+}
+
+function getSelectedPerms() {
+    if ($('#perm_all').is(':checked') || $('#editRole').val() === 'admin') return 'all';
+    return PERM_KEYS.filter(k => $(`#perm_${k}`).is(':checked')).join(',');
+}
+
+function setPerms(perms) {
+    if (perms === 'all') {
+        $('#perm_all').prop('checked', true);
+        PERM_KEYS.forEach(k => $(`#perm_${k}`).prop('checked', true));
+    } else {
+        $('#perm_all').prop('checked', false);
+        const arr = (perms || '').split(',');
+        PERM_KEYS.forEach(k => $(`#perm_${k}`).prop('checked', arr.includes(k)));
+    }
+}
+
+function loadData() {
+    $.get('/api/users').done(function(data) {
+        renderTable(data);
+    });
+}
+
+function renderTable(data) {
+    const tbody = $('#tableBody').empty();
+    if (!data || data.length === 0) {
+        tbody.append('<tr><td colspan="7" class="text-center text-muted py-4">暂无用户</td></tr>');
+        return;
+    }
+    data.forEach(function(item) {
+        const roleBadge = item.role === 'admin'
+            ? '<span class="badge bg-danger badge-status">管理员</span>'
+            : '<span class="badge bg-secondary badge-status">工程师</span>';
+        const statusBadge = item.is_active
+            ? '<span class="badge bg-success badge-status">启用</span>'
+            : '<span class="badge bg-secondary badge-status">禁用</span>';
+        const permLabel = item.permissions === 'all' ? '全部' : (item.permissions || '').split(',').join('、');
+        tbody.append(`
+            <tr>
+                <td>${item.id}</td>
+                <td><strong>${item.username}</strong></td>
+                <td>${item.real_name || '--'}</td>
+                <td>${roleBadge}</td>
+                <td><small>${permLabel}</small></td>
+                <td>${statusBadge}</td>
+                <td>
+                    <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
+                    ${item.id !== 1 ? `<button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>` : ''}
+                </td>
+            </tr>
+        `);
+    });
+}
+
+function showAddModal() {
+    $('#editId').val('');
+    $('#editUsername').val('').prop('readonly', false);
+    $('#editPassword').val('').attr('placeholder', '默认123456');
+    $('#editRealName').val('');
+    $('#editRole').val('engineer');
+    setPerms('report_daily');
+    $('#editIsActive').val('1');
+    $('#modalTitle').text('新增用户');
+    new bootstrap.Modal($('#editModal')[0]).show();
+}
+
+function editData(id) {
+    $.get('/api/users').done(function(users) {
+        const item = users.find(u => u.id == id);
+        if (!item) return;
+        $('#editId').val(item.id);
+        $('#editUsername').val(item.username).prop('readonly', true);
+        $('#editPassword').val('').attr('placeholder', '留空表示不修改');
+        $('#editRealName').val(item.real_name || '');
+        $('#editRole').val(item.role);
+        setPerms(item.permissions);
+        $('#editIsActive').val(String(item.is_active));
+        $('#modalTitle').text('编辑用户');
+        new bootstrap.Modal($('#editModal')[0]).show();
+    });
+}
+
+function saveData() {
+    const id = $('#editId').val();
+    const data = {
+        username: $('#editUsername').val(),
+        password: $('#editPassword').val() || undefined,
+        real_name: $('#editRealName').val() || undefined,
+        role: $('#editRole').val(),
+        permissions: getSelectedPerms(),
+        is_active: parseInt($('#editIsActive').val())
+    };
+    if (!data.username) { showToast('请填写用户名', 'warning'); return; }
+    if (!id && !data.password) { showToast('请填写密码', 'warning'); return; }
+    const req = id ? $.ajax({ url: '/api/users/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+                   : $.ajax({ url: '/api/users', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+    req.done(function() {
+        showToast(id ? '更新成功' : '新增成功');
+        bootstrap.Modal.getInstance($('#editModal')[0]).hide();
+        loadData();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); });
+}
+
+function deleteData(id) {
+    if (!confirm('确定删除此用户？')) return;
+    $.ajax({ url: '/api/users/' + id, method: 'DELETE' }).done(function() {
+        showToast('删除成功'); loadData();
+    }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); });
+}
+
+$(function() {
+    loadData();
+});
+</script>
+{% endblock %}

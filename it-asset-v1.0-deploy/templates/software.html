@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}软件授权 - IT资产管理系统{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-code-square"></i> 软件授权</h4>
+
+<div class="card p-3 mb-3">
+    <div class="d-flex justify-content-between">
+        <span></span>
+        <button class="btn btn-success" onclick="openModal()"><i class="bi bi-plus-lg"></i> 新增软件</button>
+    </div>
+</div>
+
+<div class="card p-3">
+    <table class="table table-hover table-sm">
+        <thead><tr><th>软件名称</th><th>版本</th><th>授权类型</th><th>授权数量</th><th>已用</th><th>到期时间</th><th>供应商</th><th>操作</th></tr></thead>
+        <tbody id="softwareTable"></tbody>
+    </table>
+</div>
+
+<!-- 模态框 -->
+<div class="modal fade" id="swModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title" id="swModalTitle">新增软件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <input type="hidden" id="editId">
+                <div class="row g-3">
+                    <div class="col-md-6"><label class="form-label">软件名称 <span class="text-danger">*</span></label><input type="text" class="form-control" id="fName"></div>
+                    <div class="col-md-3"><label class="form-label">版本</label><input type="text" class="form-control" id="fVersion"></div>
+                    <div class="col-md-3">
+                        <label class="form-label">授权类型</label>
+                        <select class="form-select" id="fLicenseType">
+                            <option value="perpetual">永久</option><option value="subscription">订阅</option><option value="volume">批量</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3"><label class="form-label">授权数量</label><input type="number" class="form-control" id="fLicenseCount" value="1"></div>
+                    <div class="col-md-3"><label class="form-label">已用数量</label><input type="number" class="form-control" id="fUsedCount" value="0"></div>
+                    <div class="col-md-3"><label class="form-label">到期时间</label><input type="date" class="form-control" id="fExpireDate"></div>
+                    <div class="col-md-6"><label class="form-label">授权密钥</label><input type="text" class="form-control" id="fLicenseKey"></div>
+                    <div class="col-md-6">
+                        <label class="form-label">供应商</label>
+                        <select class="form-select" id="fSupplier"><option value="">请选择</option></select>
+                    </div>
+                    <div class="col-md-6"><label class="form-label">采购日期</label><input type="date" class="form-control" id="fPurchaseDate"></div>
+                    <div class="col-md-6"><label class="form-label">采购价格</label><input type="number" step="0.01" class="form-control" id="fPurchasePrice"></div>
+                    <div class="col-12"><label class="form-label">备注</label><textarea class="form-control" id="fRemark" rows="2"></textarea></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveSoftware()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function() { loadSoftware(); loadSuppliers(); });
+
+function loadSuppliers() {
+    $.get('/api/suppliers', function(data) {
+        let opts = '<option value="">请选择</option>';
+        data.forEach(s => opts += `<option value="${s.id}">${s.name}</option>`);
+        $('#fSupplier').html(opts);
+    });
+}
+
+function loadSoftware() {
+    $.get('/api/software', function(data) {
+        let html = '';
+        const typeMap = { perpetual: '永久', subscription: '订阅', volume: '批量' };
+        data.forEach(s => {
+            const expireWarn = s.expire_date && new Date(s.expire_date) < new Date(Date.now() + 30*86400000) ? '<i class="bi bi-exclamation-triangle text-warning"></i>' : '';
+            html += `<tr>
+                <td>${s.name}</td><td>${s.version||'-'}</td><td>${typeMap[s.license_type]||s.license_type}</td>
+                <td>${s.license_count}</td><td>${s.used_count}</td>
+                <td>${s.expire_date||'-'} ${expireWarn}</td><td>${s.supplier_name||'-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-warning action-btn" onclick="editSoftware(${s.id})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger action-btn" onclick="deleteSoftware(${s.id})"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>`;
+        });
+        $('#softwareTable').html(html || '<tr><td colspan="8" class="text-center text-muted">暂无数据</td></tr>');
+    });
+}
+
+function openModal() {
+    $('#editId').val(''); $('#swModalTitle').text('新增软件');
+    $('#swModal input, #swModal textarea').val(''); $('#fLicenseCount').val(1); $('#fUsedCount').val(0);
+    new bootstrap.Modal($('#swModal')).show();
+}
+
+function editSoftware(id) {
+    $.get('/api/software', function(data) {
+        const s = data.find(i => i.id === id);
+        if (!s) return;
+        $('#editId').val(s.id); $('#swModalTitle').text('编辑软件');
+        $('#fName').val(s.name); $('#fVersion').val(s.version||''); $('#fLicenseType').val(s.license_type);
+        $('#fLicenseCount').val(s.license_count); $('#fUsedCount').val(s.used_count);
+        $('#fExpireDate').val(s.expire_date||''); $('#fLicenseKey').val(s.license_key||'');
+        $('#fSupplier').val(s.supplier_id||''); $('#fPurchaseDate').val(s.purchase_date||'');
+        $('#fPurchasePrice').val(s.purchase_price||''); $('#fRemark').val(s.remark||'');
+        new bootstrap.Modal($('#swModal')).show();
+    });
+}
+
+function saveSoftware() {
+    const id = $('#editId').val();
+    const data = {
+        name: $('#fName').val(), version: $('#fVersion').val(), license_type: $('#fLicenseType').val(),
+        license_count: parseInt($('#fLicenseCount').val())||1, used_count: parseInt($('#fUsedCount').val())||0,
+        expire_date: $('#fExpireDate').val()||null, license_key: $('#fLicenseKey').val(),
+        supplier_id: $('#fSupplier').val()||null, purchase_date: $('#fPurchaseDate').val()||null,
+        purchase_price: $('#fPurchasePrice').val()||null, remark: $('#fRemark').val()
+    };
+    if (!data.name) { showToast('请填写软件名称', 'danger'); return; }
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `/api/software/${id}` : '/api/software';
+    $.ajax({ url, method, contentType: 'application/json', data: JSON.stringify(data),
+        success: function() { showToast('保存成功'); bootstrap.Modal.getInstance($('#swModal')).hide(); loadSoftware(); },
+        error: function() { showToast('操作失败', 'danger'); }
+    });
+}
+
+function deleteSoftware(id) {
+    if (!confirm('确定删除此软件授权？')) return;
+    $.ajax({ url: `/api/software/${id}`, method: 'DELETE',
+        success: function() { showToast('删除成功'); loadSoftware(); },
+        error: function() { showToast('删除失败', 'danger'); }
+    });
+}
+</script>
+{% endblock %}
