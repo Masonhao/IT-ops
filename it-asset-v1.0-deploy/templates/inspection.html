@@ -151,6 +151,14 @@
 
 {% block extra_js %}
 <script>
+function escapeHtml(text) {
+    if (text == null) return '';
+    return String(text).replace(/&/g, '&amp;')
+                       .replace(/</g, '&lt;')
+                       .replace(/>/g, '&gt;')
+                       .replace(/"/g, '&quot;')
+                       .replace(/'/g, '&#039;');
+}
 let equipList = [];
 let todayTaskRecords = [];
 
@@ -276,7 +284,7 @@ function loadTemplateItems() {
             }
             const rangeHtml = t.normal_range ? `<small class="text-success">${t.normal_range}</small>${t.unit ? ' <small class="text-muted">'+t.unit+'</small>' : ''}` : '--';
             tbody.append(`<tr id="itemRow_${t.id}">
-                <td><small class="fw-bold">${t.item_name}</small>${t.item_desc ? '<br><small class="text-muted">'+t.item_desc+'</small>' : ''}</td>
+                <td><small class="fw-bold">${escapeHtml(t.item_name)}</small>${t.item_desc ? '<br><small class="text-muted">'+escapeHtml(t.item_desc)+'</small>' : ''}</td>
                 <td>${reqBadge}</td>
                 <td>${inputHtml}</td>
                 <td>${rangeHtml}</td>

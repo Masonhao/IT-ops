@@ -207,6 +207,14 @@
 
 {% block extra_js %}
 <script>
+function escapeHtml(text) {
+    if (text == null) return '';
+    return String(text).replace(/&/g, '&amp;')
+                       .replace(/</g, '&lt;')
+                       .replace(/>/g, '&gt;')
+                       .replace(/"/g, '&quot;')
+                       .replace(/'/g, '&#039;');
+}
 const FREQ_MAP = { 'daily': '每日', 'weekly': '每周', 'monthly': '每月' };
 const REC_STATUS_MAP = {
     'pending': '<span class="badge bg-warning text-dark badge-status">待完成</span>',
@@ -241,7 +249,7 @@ function loadUsers() {
             const isFilter = sel !== '#editEngineer';
             $s.find('option:not(:first)').remove();
             eng.forEach(function(u) {
-                $s.append(`<option value="${u.id}">${u.real_name || u.username}</option>`);
+                $s.append(`<option value="${u.id}">${escapeHtml(u.real_name || u.username)}</option>`);
             });
         });
     });
@@ -253,7 +261,7 @@ function loadEquipments() {
         const sel = $('#editEquipment');
         sel.find('option:not(:first)').remove();
         data.forEach(function(e) {
-            sel.append(`<option value="${e.id}" data-type="${e.equip_type}">[${EQUIP_TYPE_MAP[e.equip_type]||e.equip_type}] ${e.equip_no} - ${e.name}</option>`);
+            sel.append(`<option value="${e.id}" data-type="${e.equip_type}">[${escapeHtml(EQUIP_TYPE_MAP[e.equip_type]||e.equip_type)}] ${escapeHtml(e.equip_no)} - ${escapeHtml(e.name)}</option>`);
         });
     });
 }

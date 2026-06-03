@@ -55,6 +55,14 @@
 
 {% block extra_js %}
 <script>
+function escapeHtml(text) {
+    if (text == null) return '';
+    return String(text).replace(/&/g, '&amp;')
+                       .replace(/</g, '&lt;')
+                       .replace(/>/g, '&gt;')
+                       .replace(/"/g, '&quot;')
+                       .replace(/'/g, '&#039;');
+}
 let refreshTimer = null;
 $(function() { loadAlerts(); startAutoRefresh(); });
 
@@ -132,11 +140,11 @@ function loadAlerts() {
             } catch(e) {}
             html += `<tr>
                 <td>${icon}${a.level==='danger'?'紧急':'提醒'}</td>
-                <td>${getTypeLabel(a.alert_type)}</td>
-                <td>${a.message}</td>
-                <td>${expireDate}</td>
-                <td>${daysLeftText}</td>
-                <td><a href="${getLinkPath(a.alert_type)}">查看详情</a></td>
+                <td>${escapeHtml(getTypeLabel(a.alert_type))}</td>
+                <td>${escapeHtml(a.message)}</td>
+                <td>${escapeHtml(expireDate)}</td>
+                <td>${escapeHtml(daysLeftText)}</td>
+                <td><a href="${escapeHtml(getLinkPath(a.alert_type))}">查看详情</a></td>
             </tr>`;
         });
         $('#alertTable').html(html || '<tr><td colspan="6" class="text-center text-success">暂无预警信息，一切正常！</td></tr>');

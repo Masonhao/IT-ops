@@ -131,6 +131,14 @@
 
 {% block extra_js %}
 <script>
+function escapeHtml(text) {
+    if (text == null) return '';
+    return String(text).replace(/&/g, '&amp;')
+                       .replace(/</g, '&lt;')
+                       .replace(/>/g, '&gt;')
+                       .replace(/"/g, '&quot;')
+                       .replace(/'/g, '&#039;');
+}
 let allDomains = [];
 
 $(function() { loadDomains(); });
@@ -253,14 +261,14 @@ function renderTable(data) {
             '<span class="text-muted">-</span>';
 
         html += `<tr class="${d.status === 'urgent' ? 'table-danger' : d.status === 'expired' ? 'table-secondary' : ''}">
-            <td><strong>${d.domain_name}</strong></td>
-            <td>${d.registrar||'-'}</td>
+            <td><strong>${escapeHtml(d.domain_name)}</strong></td>
+            <td>${escapeHtml(d.registrar)||'-'}</td>
             <td>${formatDate(d.start_date)}</td>
             <td>${formatDate(d.expire_date)}</td>
             <td>${progressHtml}</td>
-            <td>${statusMap[d.status]||d.status}</td>
+            <td>${statusMap[d.status]||escapeHtml(d.status)}</td>
             <td>${autoRenewHtml}</td>
-            <td>${d.custodian||'-'}</td>
+            <td>${escapeHtml(d.custodian)||'-'}</td>
             <td>
                 <button class="btn btn-sm btn-outline-success action-btn" onclick="openRenewModal(${d.id})" title="续费"><i class="bi bi-arrow-repeat"></i></button>
                 <button class="btn btn-sm btn-outline-warning action-btn" onclick="openEditModal(${d.id})" title="编辑"><i class="bi bi-pencil"></i></button>
@@ -336,7 +344,7 @@ function openRenewModal(id) {
     const d = allDomains.find(i => i.id === id);
     if (!d) return;
     $('#renewId').val(d.id);
-    $('#renewInfo').html(`<strong>${d.domain_name}</strong> 当前到期时间：<strong>${formatDate(d.expire_date)}</strong>
+    $('#renewInfo').html(`<strong>${escapeHtml(d.domain_name)}</strong> 当前到期时间：<strong>${formatDate(d.expire_date)}</strong>
         ${d.days_left !== null ? `（剩余 ${d.days_left} 天）` : ''}`);
 
     // 默认续费1年

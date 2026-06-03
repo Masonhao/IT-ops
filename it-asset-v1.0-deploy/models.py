@@ -7,6 +7,13 @@ import os
 import hashlib
 from datetime import datetime, timedelta
 
+# 尝试导入 werkzeug 安全模块，如果不可用则回退到内置方法
+try:
+    from werkzeug.security import generate_password_hash, check_password_hash
+    WERKZEUG_AVAILABLE = True
+except ImportError:
+    WERKZEUG_AVAILABLE = False
+
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'asset.db')
 
 
@@ -19,8 +26,28 @@ def get_db():
 
 
 def hash_password(password):
-    """密码哈希"""
+    """密码哈希 - 使用 werkzeug scrypt 算法，自动生成随机盐
+    如果 werkzeug 不可用则回退到 SHA256（不建议，仅为降级兼容）
+    """
+    if WERKZEUG_AVAILABLE:
+        return generate_password_hash(password, method='scrypt')
+    # 降级方案：不使用
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def verify_password(password, password_hash):
+    """验证密码
+    1. 先尝试 werkzeug check_password_hash（新哈希格式）
+    2. 如果失败再尝试 SHA256（兼容旧密码）
+    返回 (is_valid, is_legacy) 元组
+    """
+    if WERKZEUG_AVAILABLE and password_hash and password_hash.startswith('scrypt:'):
+        return check_password_hash(password_hash, password), False
+    # 兼容旧 SHA256 哈希
+    legacy_hash = hashlib.sha256(password.encode()).hexdigest()
+    if password_hash == legacy_hash:
+        return True, True
+    return False, False
 
 
 def init_db():
@@ -40,10 +67,10 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
 
-    # 插入默认管理员
+    # 插入默认管理员（密码使用新哈希算法，首次登录后应强制修改）
     default_admin_pw = hash_password('admin')
-    c.execute('''INSERT OR IGNORE INTO user (id, username, password, real_name, role, permissions)
-        VALUES (1, 'admin', ?, '系统管理员', 'admin', 'all')''', (default_admin_pw,))
+    c.execute('''INSERT OR IGNORE INTO user (id, username, password, real_name, role, permissions, is_active)
+        VALUES (1, 'admin', ?, '系统管理员', 'admin', 'all', 1)''', (default_admin_pw,))
 
     # ========== 资产分类 ==========
     c.execute('''CREATE TABLE IF NOT EXISTS category (

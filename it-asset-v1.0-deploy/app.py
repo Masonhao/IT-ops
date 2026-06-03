@@ -4,13 +4,34 @@
 """
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, g
 from functools import wraps
-from models import init_db, get_db, generate_asset_no, generate_equip_no, hash_password
+from models import init_db, get_db, generate_asset_no, generate_equip_no, hash_password, verify_password
 from datetime import datetime, timedelta
 import json
+import os
+import logging
+import time
+from collections import defaultdict
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
-app.secret_key = 'ops-management-secret-key-2024'
+
+# 从环境变量读取 SECRET_KEY，未设置时随机生成（开发环境）
+app.secret_key = os.environ.get('SECRET_KEY')
+if not app.secret_key:
+    import secrets
+    app.secret_key = secrets.token_hex(32)
+    print("[WARN] SECRET_KEY 未设置，已随机生成。生产环境请务必设置环境变量 SECRET_KEY")
+
+# Session 安全配置
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# 生产环境请取消注释下一行，确保仅通过 HTTPS 传输 session cookie
+# app.config['SESSION_COOKIE_SECURE'] = True
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+
+# 初始化日志
+logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.INFO)
 
 # 初始化数据库
 init_db()
@@ -94,6 +115,12 @@ def load_user():
 
 # ==================== 登录/认证 ====================
 
+# 登录频率限制存储（IP -> {count, reset_time}）
+_login_rate_limit = defaultdict(lambda: {'count': 0, 'reset': 0})
+_MAX_LOGIN_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 60
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'GET':
@@ -106,14 +133,36 @@ def login():
     if not username or not password:
         return jsonify({'error': '请输入用户名和密码'}), 400
 
+    # 频率限制
+    client_ip = request.remote_addr or 'unknown'
+    now = time.time()
+    limit = _login_rate_limit[client_ip]
+    if now > limit['reset']:
+        limit['count'] = 0
+        limit['reset'] = now + _LOGIN_WINDOW_SECONDS
+    limit['count'] += 1
+    if limit['count'] > _MAX_LOGIN_ATTEMPTS:
+        app.logger.warning(f"登录频率超限: IP={client_ip}, user={username}")
+        return jsonify({'error': '登录尝试次数过多，请稍后再试'}), 429
+
     conn = get_db()
     user = conn.execute('SELECT * FROM user WHERE username = ? AND is_active = 1',
                         (username,)).fetchone()
     conn.close()
 
-    if not user or user['password'] != hash_password(password):
+    is_valid, is_legacy = verify_password(password, user['password'] if user else '')
+    if not user or not is_valid:
         return jsonify({'error': '用户名或密码错误'}), 401
 
+    # 自动迁移旧 SHA256 密码到新哈希格式
+    if is_legacy:
+        conn = get_db()
+        conn.execute('UPDATE user SET password = ? WHERE id = ?', (hash_password(password), user['id']))
+        conn.commit()
+        conn.close()
+        app.logger.info(f"密码已自动迁移到新哈希格式: user_id={user['id']}")
+
+    session.permanent = True
     session['user_id'] = user['id']
     session['username'] = user['username']
     session['real_name'] = user['real_name']
@@ -298,18 +347,22 @@ def get_users():
 @admin_required
 def create_user():
     data = request.get_json()
+    raw_pw = data.get('password', '').strip()
+    if not raw_pw:
+        raw_pw = 'ChangeMe123!'  # 随机强密码，首次登录后应强制修改
     conn = get_db()
     try:
         cursor = conn.execute('''
             INSERT INTO user (username, password, real_name, role, permissions)
             VALUES (?, ?, ?, ?, ?)
-        ''', (data['username'], hash_password(data.get('password', '123456')),
+        ''', (data['username'], hash_password(raw_pw),
               data.get('real_name'), data.get('role', 'engineer'),
               data.get('permissions', 'report_daily')))
         conn.commit()
     except Exception as e:
         conn.close()
-        return jsonify({'error': '用户名已存在'}), 400
+        app.logger.error(f"create_user error: {e}", exc_info=True)
+        return jsonify({'error': '用户名已存在或创建失败'}), 400
     conn.close()
     return jsonify({'id': cursor.lastrowid}), 201
 
@@ -464,7 +517,8 @@ def create_asset():
         conn.commit()
     except Exception as e:
         conn.close()
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"create_asset error: {e}", exc_info=True)
+        return jsonify({'error': '操作失败，请检查输入数据'}), 400
     conn.close()
     return jsonify({'id': asset_id, 'asset_no': asset_no}), 201
 
@@ -1046,12 +1100,11 @@ def get_domains():
                 exp_dt = datetime.strptime(d['expire_date'], '%Y-%m-%d')
                 days_left = (exp_dt - datetime.now()).days
                 d['days_left'] = days_left
+                # 仅在内存中计算状态，不修改数据库（避免 GET 请求产生副作用）
                 if days_left <= 30 and days_left > 0:
                     d['status'] = 'urgent'
-                    conn.execute("UPDATE domain SET status='urgent' WHERE id=?", (d['id'],))
                 elif days_left <= 0:
                     d['status'] = 'expired'
-                    conn.execute("UPDATE domain SET status='expired' WHERE id=?", (d['id'],))
             except (ValueError, TypeError):
                 d['days_left'] = None
         else:
@@ -1070,7 +1123,6 @@ def get_domains():
                 d['used_days'] = None
                 d['progress_percent'] = 0
         result.append(d)
-    conn.commit()
     conn.close()
     return jsonify(result)
 
@@ -1105,7 +1157,8 @@ def create_domain():
         conn.close()
         if 'UNIQUE constraint failed' in str(e):
             return jsonify({'error': '域名已存在'}), 400
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"create_domain error: {e}", exc_info=True)
+        return jsonify({'error': '操作失败，请检查输入数据'}), 400
     conn.close()
     return jsonify({'id': cursor.lastrowid}), 201
 
@@ -1226,7 +1279,8 @@ def create_equipment():
         conn.commit()
     except Exception as e:
         conn.close()
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"create_equipment error: {e}", exc_info=True)
+        return jsonify({'error': '操作失败，请检查输入数据'}), 400
     conn.close()
     return jsonify({'id': cursor.lastrowid, 'equip_no': equip_no}), 201
 
@@ -1304,7 +1358,8 @@ def create_inspection_template():
         conn.commit()
     except Exception as e:
         conn.close()
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"create error: {e}", exc_info=True)
+        return jsonify({'error': '操作失败，请检查输入数据'}), 400
     conn.close()
     return jsonify({'id': cursor.lastrowid}), 201
 
@@ -1445,7 +1500,8 @@ def create_inspection_task():
         _generate_task_records_for_date(conn)
     except Exception as e:
         conn.close()
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"create_inspection_task error: {e}", exc_info=True)
+        return jsonify({'error': '操作失败，请检查输入数据'}), 400
     conn.close()
     return jsonify({'id': task_id}), 201
 
@@ -1760,7 +1816,8 @@ def create_inspection():
         conn.commit()
     except Exception as e:
         conn.close()
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"create error: {e}", exc_info=True)
+        return jsonify({'error': '操作失败，请检查输入数据'}), 400
     conn.close()
     return jsonify({'id': cursor.lastrowid}), 201
 
@@ -1866,7 +1923,8 @@ def create_worklog():
         conn.commit()
     except Exception as e:
         conn.close()
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"create error: {e}", exc_info=True)
+        return jsonify({'error': '操作失败，请检查输入数据'}), 400
     conn.close()
     return jsonify({'id': cursor.lastrowid}), 201
 
@@ -2017,7 +2075,8 @@ def create_report():
         conn.commit()
     except Exception as e:
         conn.close()
-        return jsonify({'error': str(e)}), 400
+        app.logger.error(f"create error: {e}", exc_info=True)
+        return jsonify({'error': '操作失败，请检查输入数据'}), 400
     conn.close()
     return jsonify({'id': cursor.lastrowid}), 201
 
@@ -2071,6 +2130,25 @@ def get_report(rid):
 def update_report(rid):
     data = request.get_json()
     conn = get_db()
+    # 先查询报告类型，校验权限
+    row = conn.execute('SELECT report_type, user_id FROM report WHERE id = ?', (rid,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': '报告不存在'}), 404
+    report_type = row['report_type']
+    if report_type == 'daily' and not check_permission('report_daily'):
+        conn.close()
+        return jsonify({'error': '无权访问日报模块'}), 403
+    if report_type == 'weekly' and not check_permission('report_weekly'):
+        conn.close()
+        return jsonify({'error': '无权访问周报模块'}), 403
+    if report_type == 'monthly' and not check_permission('report_monthly'):
+        conn.close()
+        return jsonify({'error': '无权访问月报模块'}), 403
+    # 非管理员只能修改自己的报告
+    if session.get('role') != 'admin' and row['user_id'] != session['user_id']:
+        conn.close()
+        return jsonify({'error': '无权修改此报告'}), 403
     fields = []
     params = []
     for f in ['report_date', 'title', 'summary', 'completed_tasks', 'pending_tasks',
@@ -2095,6 +2173,25 @@ def update_report(rid):
 @login_required
 def delete_report(rid):
     conn = get_db()
+    # 先查询报告类型，校验权限
+    row = conn.execute('SELECT report_type, user_id FROM report WHERE id = ?', (rid,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': '报告不存在'}), 404
+    report_type = row['report_type']
+    if report_type == 'daily' and not check_permission('report_daily'):
+        conn.close()
+        return jsonify({'error': '无权访问日报模块'}), 403
+    if report_type == 'weekly' and not check_permission('report_weekly'):
+        conn.close()
+        return jsonify({'error': '无权访问周报模块'}), 403
+    if report_type == 'monthly' and not check_permission('report_monthly'):
+        conn.close()
+        return jsonify({'error': '无权访问月报模块'}), 403
+    # 非管理员只能删除自己的报告
+    if session.get('role') != 'admin' and row['user_id'] != session['user_id']:
+        conn.close()
+        return jsonify({'error': '无权删除此报告'}), 403
     conn.execute('DELETE FROM report WHERE id = ?', (rid,))
     conn.commit()
     conn.close()
@@ -2105,10 +2202,14 @@ def delete_report(rid):
 
 @app.route('/api/stats/engineer-work', methods=['GET'])
 @login_required
+@require_permission('report')
 def get_engineer_work_stats():
     """查询工程师在某天的所有工作（日志、巡检）"""
     date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
     user_id = request.args.get('user_id')
+    # 非管理员只能查看自己的工作统计
+    if session.get('role') != 'admin' and user_id and int(user_id) != session['user_id']:
+        return jsonify({'error': '无权查看其他用户的工作统计'}), 403
     conn = get_db()
     result = {'date': date, 'work_logs': [], 'inspections': []}
     # 工作日志
@@ -2156,6 +2257,7 @@ def get_engineer_work_stats():
 
 @app.route('/api/stats/equipment-history', methods=['GET'])
 @login_required
+@require_permission('equipment')
 def get_equipment_history():
     """查询某设备的所有维护历史"""
     equipment_id = request.args.get('equipment_id')
@@ -2186,5 +2288,25 @@ def get_equipment_history():
     return jsonify(result)
 
 
+@app.after_request
+def add_security_headers(response):
+    """添加安全响应头"""
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    # 内容安全策略（逐步收紧）
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+        "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+        "font-src 'self' https://cdn.jsdelivr.net; "
+        "img-src 'self' data:"
+    )
+    return response
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5003, debug=True)
+    # 生产环境务必使用 Gunicorn 部署，不要直接运行此开发服务器
+    # debug=False 防止信息泄露和代码执行
+    app.run(host='127.0.0.1', port=5003, debug=False)

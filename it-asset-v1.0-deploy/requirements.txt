@@ -1,4 +1,11 @@
-flask==3.0.0
+# 生产依赖
+Flask==3.0.0
+Werkzeug==3.1.8
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+itsdangerous==2.2.0
+click==8.4.1
+blinker==1.9.0
 
 # 开发依赖（pre-commit hooks）
 # pip install pre-commit black isort flake8
