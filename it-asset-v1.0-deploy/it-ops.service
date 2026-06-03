@@ -1,0 +1,51 @@
+[Unit]
+Description=IT Operations Management System
+Documentation=https://github.com/Masonhao/IT-ops
+After=network.target mysql.service  # 如果有独立数据库服务，取消注释
+Wants=network.target
+
+[Service]
+Type=simple
+User=itops
+Group=itops
+WorkingDirectory=/opt/it-ops/it-asset-v1.0-deploy
+
+# 环境变量
+Environment="PATH=/opt/it-ops/it-asset-v1.0-deploy/venv/bin"
+EnvironmentFile=/opt/it-ops/it-asset-v1.0-deploy/.env
+
+# 启动命令（使用Gunicorn）
+ExecStart=/opt/it-ops/it-asset-v1.0-deploy/venv/bin/gunicorn \
+    --workers 4 \
+    --bind 127.0.0.1:5003 \
+    --access-logfile - \
+    --error-logfile - \
+    --log-level info \
+    --timeout 120 \
+    --keep-alive 5 \
+    app:app
+
+# 优雅停止
+ExecStop=/bin/kill -s TERM $MAINPID
+
+# 重启策略
+Restart=always
+RestartSec=10s
+
+# 资源限制
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# 安全设置
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+# 日志配置
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=it-ops
+
+[Install]
+WantedBy=multi-user.target
