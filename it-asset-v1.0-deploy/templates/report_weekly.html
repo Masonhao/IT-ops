@@ -5,7 +5,9 @@
 <div class="container-fluid px-3">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div class="d-flex gap-2 align-items-center flex-wrap filter-bar">
-            <input type="week" class="form-control form-control-sm" id="filterWeek" onchange="loadData()">
+            <input type="date" class="form-control form-control-sm" id="filterWeekFrom" onchange="onFilterWeekChange()">
+            <span class="text-muted">至</span>
+            <input type="date" class="form-control form-control-sm" id="filterWeekTo" onchange="onFilterWeekChange()">
         </div>
         <button class="btn btn-primary btn-sm" onclick="showAddModal()">
             <i class="bi bi-plus-lg"></i> 新增周报
@@ -21,7 +23,6 @@
                             <th>标题</th>
                             <th>填写人</th>
                             <th>总耗时(分)</th>
-                            <th>状态</th>
                             <th>操作</th>
                         </tr>
                     </thead>
@@ -44,8 +45,8 @@
                 <input type="hidden" id="editId">
                 <div class="row g-3">
                     <div class="col-md-4">
-                        <label class="form-label fw-bold" style="font-size:0.85rem;">周次</label>
-                        <input type="week" class="form-control form-control-sm" id="editWeek" onchange="onWeekChange()">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">周次 <small class="text-muted fw-normal">(选择周一自动填充)</small></label>
+                        <input type="date" class="form-control form-control-sm" id="editWeek" onchange="onWeekChange()">
                     </div>
                     <div class="col-md-8">
                         <label class="form-label fw-bold" style="font-size:0.85rem;">标题</label>
@@ -99,13 +100,6 @@
                         <label class="form-label fw-bold" style="font-size:0.85rem;">关联工作日志ID</label>
                         <input type="text" class="form-control form-control-sm" id="editWorkLogIds" placeholder="自动填入，也可手动输入">
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
-                        <select class="form-select form-select-sm" id="editStatus">
-                            <option value="draft">草稿</option>
-                            <option value="submitted">已提交</option>
-                        </select>
-                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -121,30 +115,44 @@
 <script>
 let weekLogsData = [];
 
-// 将 YYYY-W## 转换为该周一和周日的日期
-function getWeekRange(weekStr) {
-    if (!weekStr) return null;
-    const [year, week] = weekStr.split('-W').map(Number);
-    // ISO 8601: 第1周包含1月4日
-    const jan4 = new Date(year, 0, 4);
-    const dayOfWeek = jan4.getDay() || 7;
-    const monday = new Date(jan4);
-    monday.setDate(jan4.getDate() - dayOfWeek + 1 + (week - 1) * 7);
+// 将日期转换为该周的周一和周日
+function getWeekRange(dateStr) {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    const day = date.getDay() || 7;
+    const monday = new Date(date);
+    monday.setDate(date.getDate() - day + 1);
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     const fmt = d => d.toISOString().slice(0,10);
-    return { start: fmt(monday), end: fmt(sunday) };
+    return { start: fmt(monday), end: fmt(sunday), year: monday.getFullYear(), week: getWeekNumber(monday) };
+}
+
+function getWeekNumber(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
 }
 
 function onWeekChange() {
-    const weekVal = $('#editWeek').val();
-    if (!weekVal) return;
-    const range = getWeekRange(weekVal);
+    const dateVal = $('#editWeek').val();
+    if (!dateVal) return;
+    const range = getWeekRange(dateVal);
     if (!range) return;
     loadWeekLogs(range.start, range.end);
     // 自动生成标题
     if (!$('#editTitle').val()) {
-        $('#editTitle').val(`${weekVal} 工作周报`);
+        $('#editTitle').val(`${range.year}-W${String(range.week).padStart(2,'0')} 工作周报`);
+    }
+}
+
+function onFilterWeekChange() {
+    const start = $('#filterWeekFrom').val();
+    const end = $('#filterWeekTo').val();
+    if (start && end) {
+        loadData();
     }
 }
 
@@ -220,6 +228,10 @@ function mergeLogsToReport() {
 
 function loadData() {
     const params = new URLSearchParams({ report_type: 'weekly' });
+    const start = $('#filterWeekFrom').val();
+    const end = $('#filterWeekTo').val();
+    if (start) params.append('date_from', start);
+    if (end) params.append('date_to', end);
     $.get('/api/reports/list?' + params.toString()).done(function(data) {
         renderTable(data);
     });
@@ -228,19 +240,15 @@ function loadData() {
 function renderTable(data) {
     const tbody = $('#tableBody').empty();
     if (!data || data.length === 0) {
-        tbody.append('<tr><td colspan="6" class="text-center text-muted py-4">暂无周报</td></tr>');
+        tbody.append('<tr><td colspan="5" class="text-center text-muted py-4">暂无周报</td></tr>');
         return;
     }
     data.forEach(function(item) {
-        const statusBadge = item.status === 'submitted'
-            ? '<span class="badge bg-success badge-status">已提交</span>'
-            : '<span class="badge bg-secondary badge-status">草稿</span>';
         tbody.append(`<tr>
             <td>${item.report_date}</td>
             <td><strong>${item.title}</strong></td>
             <td>${item.user_name || '--'}</td>
             <td>${item.duration_total || 0}</td>
-            <td>${statusBadge}</td>
             <td>
                 <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
                 <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
@@ -251,24 +259,23 @@ function renderTable(data) {
 
 function showAddModal() {
     $('#editId').val('');
-    // 默认当前周
+    // 默认当前周的周一
     const now = new Date();
-    const year = now.getFullYear();
-    const startOfYear = new Date(year, 0, 1);
-    const week = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
-    const weekStr = `${year}-W${String(week).padStart(2,'0')}`;
+    const day = now.getDay() || 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - day + 1);
+    const weekStr = monday.toISOString().slice(0,10);
+    const range = getWeekRange(weekStr);
     $('#editWeek').val(weekStr);
-    $('#editTitle').val(`${weekStr} 工作周报`);
+    $('#editTitle').val(`${range.year}-W${String(range.week).padStart(2,'0')} 工作周报`);
     $('#editSummary').val('');
     $('#editCompleted').val('');
     $('#editPending').val('');
     $('#editProblems').val('');
     $('#editDuration').val('0');
     $('#editWorkLogIds').val('');
-    $('#editStatus').val('draft');
     $('#weekLogsList').html('<small class="text-muted">加载本周日志中...</small>');
     $('#modalTitle').text('新增周报');
-    const range = getWeekRange(weekStr);
     if (range) loadWeekLogs(range.start, range.end);
     new bootstrap.Modal($('#editModal')[0]).show();
 }
@@ -284,7 +291,6 @@ function editData(id) {
         $('#editProblems').val(item.problems || '');
         $('#editDuration').val(item.duration_total || 0);
         $('#editWorkLogIds').val(item.work_log_ids || '');
-        $('#editStatus').val(item.status);
         $('#modalTitle').text('编辑周报');
         const range = getWeekRange(item.report_date);
         if (range) loadWeekLogs(range.start, range.end);
@@ -312,7 +318,7 @@ function saveData() {
         problems: $('#editProblems').val() || '',
         work_log_ids: $('#editWorkLogIds').val() || '',
         duration_total: parseInt($('#editDuration').val()) || 0,
-        status: $('#editStatus').val()
+        status: 'submitted'
     };
     if (!data.title) { showToast('请填写标题', 'warning'); return; }
     const req = id ? $.ajax({ url: '/api/reports/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
@@ -332,6 +338,9 @@ function deleteData(id) {
 }
 
 $(function() {
+    const today = new Date().toISOString().slice(0,10);
+    $('#filterWeekFrom').val(today);
+    $('#filterWeekTo').val(today);
     loadData();
 });
 </script>

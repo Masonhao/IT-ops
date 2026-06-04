@@ -5,7 +5,9 @@
 <div class="container-fluid px-3">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div class="d-flex gap-2 align-items-center flex-wrap filter-bar">
-            <input type="month" class="form-control form-control-sm" id="filterMonth" onchange="loadData()">
+            <input type="date" class="form-control form-control-sm" id="filterMonthFrom" onchange="loadData()">
+            <span class="text-muted">至</span>
+            <input type="date" class="form-control form-control-sm" id="filterMonthTo" onchange="loadData()">
         </div>
         <button class="btn btn-primary btn-sm" onclick="showAddModal()">
             <i class="bi bi-plus-lg"></i> 新增月报
@@ -21,7 +23,6 @@
                             <th>标题</th>
                             <th>填写人</th>
                             <th>总耗时(分)</th>
-                            <th>状态</th>
                             <th>操作</th>
                         </tr>
                     </thead>
@@ -43,8 +44,8 @@
                 <input type="hidden" id="editId">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label fw-bold" style="font-size:0.85rem;">月份</label>
-                        <input type="month" class="form-control form-control-sm" id="editMonth">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">月份 <small class="text-muted fw-normal">(选择该月任意一天)</small></label>
+                        <input type="date" class="form-control form-control-sm" id="editMonth">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-bold" style="font-size:0.85rem;">标题</label>
@@ -70,13 +71,6 @@
                         <label class="form-label fw-bold" style="font-size:0.85rem;">总耗时(分钟)</label>
                         <input type="number" class="form-control form-control-sm" id="editDuration" value="0" min="0">
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
-                        <select class="form-select form-select-sm" id="editStatus">
-                            <option value="draft">草稿</option>
-                            <option value="submitted">已提交</option>
-                        </select>
-                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -92,6 +86,10 @@
 <script>
 function loadData() {
     const params = new URLSearchParams({ report_type: 'monthly' });
+    const start = $('#filterMonthFrom').val();
+    const end = $('#filterMonthTo').val();
+    if (start) params.append('date_from', start);
+    if (end) params.append('date_to', end);
     $.get('/api/reports/list?' + params.toString()).done(function(data) {
         renderTable(data);
     });
@@ -99,20 +97,16 @@ function loadData() {
 function renderTable(data) {
     const tbody = $('#tableBody').empty();
     if (!data || data.length === 0) {
-        tbody.append('<tr><td colspan="6" class="text-center text-muted py-4">暂无月报</td></tr>');
+        tbody.append('<tr><td colspan="5" class="text-center text-muted py-4">暂无月报</td></tr>');
         return;
     }
     data.forEach(function(item) {
-        const statusBadge = item.status === 'submitted'
-            ? '<span class="badge bg-success badge-status">已提交</span>'
-            : '<span class="badge bg-secondary badge-status">草稿</span>';
         tbody.append(`
             <tr>
                 <td>${item.report_date}</td>
                 <td><strong>${item.title}</strong></td>
                 <td>${item.user_name || '--'}</td>
                 <td>${item.duration_total || 0}</td>
-                <td>${statusBadge}</td>
                 <td>
                     <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
                     <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
@@ -123,14 +117,14 @@ function renderTable(data) {
 }
 function showAddModal() {
     $('#editId').val('');
-    $('#editMonth').val('');
-    $('#editTitle').val('');
+    const now = new Date();
+    $('#editMonth').val(now.toISOString().slice(0,10));
+    $('#editTitle').val(`${now.getFullYear()}年${String(now.getMonth()+1).padStart(2,'0')}月 工作月报`);
     $('#editSummary').val('');
     $('#editCompleted').val('');
     $('#editPending').val('');
     $('#editProblems').val('');
     $('#editDuration').val('0');
-    $('#editStatus').val('draft');
     $('#modalTitle').text('新增月报');
     new bootstrap.Modal($('#editModal')[0]).show();
 }
@@ -144,7 +138,6 @@ function editData(id) {
         $('#editPending').val(item.pending_tasks || '');
         $('#editProblems').val(item.problems || '');
         $('#editDuration').val(item.duration_total || 0);
-        $('#editStatus').val(item.status);
         $('#modalTitle').text('编辑月报');
         new bootstrap.Modal($('#editModal')[0]).show();
     });
@@ -160,7 +153,7 @@ function saveData() {
         pending_tasks: $('#editPending').val() || '',
         problems: $('#editProblems').val() || '',
         duration_total: parseInt($('#editDuration').val()) || 0,
-        status: $('#editStatus').val()
+        status: 'submitted'
     };
     if (!data.title) { showToast('请填写标题', 'warning'); return; }
     const req = id ? $.ajax({ url: '/api/reports/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
@@ -173,6 +166,13 @@ function deleteData(id) {
     $.ajax({ url: '/api/reports/' + id, method: 'DELETE' }).done(function() { showToast('删除成功'); loadData(); })
        .fail(function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); });
 }
-$(function() { loadData(); });
+$(function() {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+    const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+    $('#filterMonthFrom').val(firstDay);
+    $('#filterMonthTo').val(lastDay);
+    loadData();
+});
 </script>
 {% endblock %}

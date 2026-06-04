@@ -32,7 +32,6 @@
                             <th>标题</th>
                             <th>类型</th>
                             <th>耗时(分)</th>
-                            <th>状态</th>
                             <th>操作</th>
                         </tr>
                     </thead>
@@ -68,13 +67,6 @@
                             <option value="communication">沟通</option>
                         </select>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
-                        <select class="form-select form-select-sm" id="editStatus">
-                            <option value="draft">草稿</option>
-                            <option value="submitted">已提交</option>
-                        </select>
-                    </div>
                     <div class="col-12">
                         <label class="form-label fw-bold" style="font-size:0.85rem;">标题 <span class="text-danger">*</span></label>
                         <input type="text" class="form-control form-control-sm" id="editTitle" placeholder="简要描述今天做了什么...">
@@ -107,7 +99,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary btn-sm" onclick="saveData()">保存</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="submitData()">提交</button>
             </div>
         </div>
     </div>
@@ -194,23 +186,21 @@ function loadData() {
     });
 }
 
+let autoSaveTimer = null;
+
 function renderTable(data) {
     const tbody = $('#tableBody').empty();
     if (!data || data.length === 0) {
-        tbody.append('<tr><td colspan="6" class="text-center text-muted py-4">暂无工作日志</td></tr>');
+        tbody.append('<tr><td colspan="5" class="text-center text-muted py-4">暂无工作日志</td></tr>');
         return;
     }
     data.forEach(function(item) {
         const typeLabel = WORK_TYPE_MAP[item.work_type] || item.work_type;
-        const statusBadge = item.status === 'submitted'
-            ? '<span class="badge bg-success badge-status">已提交</span>'
-            : '<span class="badge bg-secondary badge-status">草稿</span>';
         tbody.append(`<tr>
             <td>${item.log_date}</td>
             <td><a href="javascript:void(0)" onclick="viewLog(${item.id})" class="fw-bold text-decoration-none">${item.title}</a></td>
             <td><span class="badge bg-info text-dark" style="font-size:0.75rem;">${typeLabel}</span></td>
             <td>${item.duration_minutes || 0}</td>
-            <td>${statusBadge}</td>
             <td>
                 <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
                 <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
@@ -228,13 +218,13 @@ function showAddModal() {
     $('#editEquipIds').val('');
     $('#editInspectionIds').val('');
     $('#editDuration').val('0');
-    $('#editStatus').val('draft');
     $('#editEquipSelect').val('');
     $('#editInspectionSelect').val('');
     $('#selectedEquipBadges').empty();
     $('#modalTitle').text('新增工作日志');
     loadMyDevices();
     loadMyTaskRecords();
+    startAutoSave();
     new bootstrap.Modal($('#editModal')[0]).show();
 }
 
@@ -248,11 +238,11 @@ function editData(id) {
         $('#editEquipIds').val(item.equipment_ids || '');
         $('#editInspectionIds').val(item.inspection_ids || '');
         $('#editDuration').val(item.duration_minutes || 0);
-        $('#editStatus').val(item.status);
         $('#selectedEquipBadges').empty();
         $('#modalTitle').text('编辑工作日志');
         loadMyDevices();
         loadMyTaskRecords();
+        startAutoSave();
         new bootstrap.Modal($('#editModal')[0]).show();
     }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '加载失败', 'danger'); });
 }
@@ -287,9 +277,8 @@ function viewLog(id) {
     }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '加载失败', 'danger'); });
 }
 
-function saveData() {
-    const id = $('#editId').val();
-    const data = {
+function getFormData() {
+    return {
         log_date: $('#editDate').val(),
         work_type: $('#editType').val(),
         title: $('#editTitle').val(),
@@ -297,16 +286,50 @@ function saveData() {
         equipment_ids: $('#editEquipIds').val() || '',
         inspection_ids: $('#editInspectionIds').val() || '',
         duration_minutes: parseInt($('#editDuration').val()) || 0,
-        status: $('#editStatus').val()
+        status: 'submitted'
     };
+}
+
+function submitData() {
+    stopAutoSave();
+    const id = $('#editId').val();
+    const data = getFormData();
     if (!data.title) { showToast('请填写标题', 'warning'); return; }
     const req = id ? $.ajax({ url: '/api/worklogs/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
                    : $.ajax({ url: '/api/worklogs', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
     req.done(function() {
-        showToast(id ? '更新成功' : '新增成功');
+        showToast(id ? '更新成功' : '提交成功');
         bootstrap.Modal.getInstance($('#editModal')[0]).hide();
         loadData();
     }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); });
+}
+
+function autoSave() {
+    const id = $('#editId').val();
+    const data = getFormData();
+    if (!data.title) return;
+    const req = id ? $.ajax({ url: '/api/worklogs/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+                   : $.ajax({ url: '/api/worklogs', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+    req.done(function(res) {
+        if (!id && res.id) {
+            $('#editId').val(res.id);
+        }
+        showToast('自动保存成功', 'success');
+    }).fail(function(xhr) {
+        console.log('自动保存失败:', xhr.responseJSON?.error || '未知错误');
+    });
+}
+
+function startAutoSave() {
+    stopAutoSave();
+    autoSaveTimer = setInterval(autoSave, 5000);
+}
+
+function stopAutoSave() {
+    if (autoSaveTimer) {
+        clearInterval(autoSaveTimer);
+        autoSaveTimer = null;
+    }
 }
 
 function deleteData(id) {
@@ -324,6 +347,9 @@ $(function() {
     $('#editInspectionSelect').on('change', onInspectionSelectChange);
     $('#editDate').on('change', function() {
         loadMyTaskRecords();
+    });
+    $('#editModal').on('hidden.bs.modal', function() {
+        stopAutoSave();
     });
 });
 </script>

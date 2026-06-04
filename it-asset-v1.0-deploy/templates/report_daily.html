@@ -26,7 +26,6 @@
                             <th>标题</th>
                             <th>填写人</th>
                             <th>总耗时(分)</th>
-                            <th>状态</th>
                             <th>操作</th>
                         </tr>
                     </thead>
@@ -73,29 +72,22 @@
                         <textarea class="form-control form-control-sm" id="editProblems" rows="2" placeholder="遇到的问题或潜在风险..."></textarea>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold" style="font-size:0.85rem;">关联设备ID</label>
-                        <input type="text" class="form-control form-control-sm" id="editEquipIds" placeholder="多个用逗号分隔">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold" style="font-size:0.85rem;">关联工作日志ID</label>
-                        <input type="text" class="form-control form-control-sm" id="editWorkLogIds" placeholder="多个用逗号分隔">
+                        <label class="form-label fw-bold" style="font-size:0.85rem;">关联工作日志</label>
+                        <select class="form-select form-select-sm" id="editWorkLogSelect">
+                            <option value="">-- 请选择已提交的工作日志 --</option>
+                        </select>
+                        <input type="hidden" id="editWorkLogIds">
+                        <div id="selectedWorkLogBadges" class="mt-1"></div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-bold" style="font-size:0.85rem;">总耗时(分钟)</label>
                         <input type="number" class="form-control form-control-sm" id="editDuration" value="0" min="0">
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold" style="font-size:0.85rem;">状态</label>
-                        <select class="form-select form-select-sm" id="editStatus">
-                            <option value="draft">草稿</option>
-                            <option value="submitted">已提交</option>
-                        </select>
-                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary btn-sm" onclick="saveData()">保存</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="submitData()">提交</button>
             </div>
         </div>
     </div>
@@ -115,23 +107,63 @@ function loadData() {
     });
 }
 
+let availableWorkLogs = [];
+let autoSaveTimer = null;
+let lastSavedId = null;
+
+function loadAvailableWorkLogs() {
+    const date = $('#editDate').val();
+    if (!date) return;
+    $.get('/api/worklogs?date=' + date).done(function(data) {
+        availableWorkLogs = data;
+        const sel = $('#editWorkLogSelect').empty().append('<option value="">-- 请选择已提交的工作日志 --</option>');
+        data.forEach(function(log) {
+            sel.append(`<option value="${log.id}">${log.log_date} ${log.title} (${log.duration_minutes||0}分钟)</option>`);
+        });
+        // 回显已保存的日志ID
+        const savedIds = ($('#editWorkLogIds').val() || '').split(',').map(x=>x.trim()).filter(Boolean);
+        if (savedIds.length === 1) {
+            $('#editWorkLogSelect').val(savedIds[0]);
+        }
+        updateWorkLogBadges();
+    });
+}
+
+function onWorkLogSelectChange() {
+    const val = $('#editWorkLogSelect').val();
+    $('#editWorkLogIds').val(val);
+    updateWorkLogBadges();
+}
+
+function updateWorkLogBadges() {
+    const badges = $('#selectedWorkLogBadges').empty();
+    const ids = ($('#editWorkLogIds').val() || '').split(',').map(x=>x.trim()).filter(Boolean);
+    ids.forEach(function(id) {
+        const log = availableWorkLogs.find(l => String(l.id) === id);
+        const name = log ? `${log.title} (${log.duration_minutes||0}分)` : ('日志'+id);
+        badges.append(`<span class="badge bg-info text-dark me-1 mb-1">${name} <a href="#" onclick="clearWorkLogSelect();return false;" class="text-dark">×</a></span>`);
+    });
+}
+
+function clearWorkLogSelect() {
+    $('#editWorkLogSelect').val('');
+    $('#editWorkLogIds').val('');
+    updateWorkLogBadges();
+}
+
 function renderTable(data) {
     const tbody = $('#tableBody').empty();
     if (!data || data.length === 0) {
-        tbody.append('<tr><td colspan="6" class="text-center text-muted py-4">暂无日报</td></tr>');
+        tbody.append('<tr><td colspan="5" class="text-center text-muted py-4">暂无日报</td></tr>');
         return;
     }
     data.forEach(function(item) {
-        const statusBadge = item.status === 'submitted'
-            ? '<span class="badge bg-success badge-status">已提交</span>'
-            : '<span class="badge bg-secondary badge-status">草稿</span>';
         tbody.append(`
             <tr>
                 <td>${item.report_date}</td>
                 <td><a href="javascript:void(0)" onclick="viewReport(${item.id})" class="fw-bold text-decoration-none">${item.title}</a></td>
                 <td>${item.user_name || '--'}</td>
                 <td>${item.duration_total || 0}</td>
-                <td>${statusBadge}</td>
                 <td>
                     <button class="btn btn-outline-primary btn-sm action-btn" onclick="editData(${item.id})"><i class="bi bi-pencil"></i></button>
                     <button class="btn btn-outline-danger btn-sm action-btn" onclick="deleteData(${item.id})"><i class="bi bi-trash"></i></button>
@@ -149,11 +181,13 @@ function showAddModal() {
     $('#editCompleted').val('');
     $('#editPending').val('');
     $('#editProblems').val('');
-    $('#editEquipIds').val('');
     $('#editWorkLogIds').val('');
+    $('#editWorkLogSelect').val('');
+    $('#selectedWorkLogBadges').empty();
     $('#editDuration').val('0');
-    $('#editStatus').val('draft');
     $('#modalTitle').text('新增日报');
+    loadAvailableWorkLogs();
+    startAutoSave();
     new bootstrap.Modal($('#editModal')[0]).show();
 }
 
@@ -166,21 +200,18 @@ function editData(id) {
         $('#editCompleted').val(item.completed_tasks || '');
         $('#editPending').val(item.pending_tasks || '');
         $('#editProblems').val(item.problems || '');
-        $('#editEquipIds').val(item.equipment_ids || '');
         $('#editWorkLogIds').val(item.work_log_ids || '');
         $('#editDuration').val(item.duration_total || 0);
-        $('#editStatus').val(item.status);
         $('#modalTitle').text('编辑日报');
+        lastSavedId = item.id;
+        loadAvailableWorkLogs();
+        startAutoSave();
         new bootstrap.Modal($('#editModal')[0]).show();
     }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '加载失败', 'danger'); });
 }
 
 function viewReport(id) {
     $.get('/api/reports/' + id).done(function(item) {
-        let equipHtml = '';
-        if (item.equipments && item.equipments.length) {
-            equipHtml = '<h6>关联设备：</h6><ul>' + item.equipments.map(e => `<li>${e.equip_no} - ${e.name}</li>`).join('') + '</ul>';
-        }
         let wlHtml = '';
         if (item.work_logs && item.work_logs.length) {
             wlHtml = '<h6>关联工作日志：</h6><ul>' + item.work_logs.map(w => `<li>${w.log_date} - ${w.title} (${w.duration_minutes}分钟)</li>`).join('') + '</ul>';
@@ -194,14 +225,12 @@ function viewReport(id) {
                             <div class="row g-2 mb-3">
                                 <div class="col-md-6"><strong>日期：</strong>${item.report_date}</div>
                                 <div class="col-md-6"><strong>填写人：</strong>${item.user_name}</div>
-                                <div class="col-md-6"><strong>状态：</strong>${item.status === 'submitted' ? '已提交' : '草稿'}</div>
                                 <div class="col-md-6"><strong>总耗时：</strong>${item.duration_total || 0} 分钟</div>
                             </div>
                             ${item.summary ? '<h6>今日总结：</h6><p style="white-space:pre-wrap;">' + item.summary + '</p>' : ''}
                             ${item.completed_tasks ? '<h6>已完成工作：</h6><p style="white-space:pre-wrap;">' + item.completed_tasks + '</p>' : ''}
                             ${item.pending_tasks ? '<h6>待处理事项：</h6><p style="white-space:pre-wrap;">' + item.pending_tasks + '</p>' : ''}
                             ${item.problems ? '<h6>问题与风险：</h6><p style="white-space:pre-wrap;">' + item.problems + '</p>' : ''}
-                            ${equipHtml}
                             ${wlHtml}
                         </div>
                     </div>
@@ -213,9 +242,8 @@ function viewReport(id) {
     }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '加载失败', 'danger'); });
 }
 
-function saveData() {
-    const id = $('#editId').val();
-    const data = {
+function getFormData() {
+    return {
         report_type: 'daily',
         report_date: $('#editDate').val(),
         title: $('#editTitle').val(),
@@ -223,19 +251,54 @@ function saveData() {
         completed_tasks: $('#editCompleted').val() || '',
         pending_tasks: $('#editPending').val() || '',
         problems: $('#editProblems').val() || '',
-        equipment_ids: $('#editEquipIds').val() || '',
         work_log_ids: $('#editWorkLogIds').val() || '',
         duration_total: parseInt($('#editDuration').val()) || 0,
-        status: $('#editStatus').val()
+        status: 'submitted'
     };
+}
+
+function submitData() {
+    stopAutoSave();
+    const id = $('#editId').val();
+    const data = getFormData();
     if (!data.title) { showToast('请填写标题', 'warning'); return; }
     const req = id ? $.ajax({ url: '/api/reports/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
                    : $.ajax({ url: '/api/reports', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
-    req.done(function() {
-        showToast(id ? '更新成功' : '新增成功');
+    req.done(function(res) {
+        showToast(id ? '更新成功' : '提交成功');
         bootstrap.Modal.getInstance($('#editModal')[0]).hide();
+        lastSavedId = null;
         loadData();
     }).fail(function(xhr) { showToast(xhr.responseJSON?.error || '操作失败', 'danger'); });
+}
+
+function autoSave() {
+    const id = $('#editId').val();
+    const data = getFormData();
+    if (!data.title) return;
+    const req = id ? $.ajax({ url: '/api/reports/' + id, method: 'PUT', contentType: 'application/json', data: JSON.stringify(data) })
+                   : $.ajax({ url: '/api/reports', method: 'POST', contentType: 'application/json', data: JSON.stringify(data) });
+    req.done(function(res) {
+        if (!id && res.id) {
+            $('#editId').val(res.id);
+            lastSavedId = res.id;
+        }
+        showToast('自动保存成功', 'success');
+    }).fail(function(xhr) {
+        console.log('自动保存失败:', xhr.responseJSON?.error || '未知错误');
+    });
+}
+
+function startAutoSave() {
+    stopAutoSave();
+    autoSaveTimer = setInterval(autoSave, 5000);
+}
+
+function stopAutoSave() {
+    if (autoSaveTimer) {
+        clearInterval(autoSaveTimer);
+        autoSaveTimer = null;
+    }
 }
 
 function deleteData(id) {
@@ -250,6 +313,14 @@ $(function() {
     $('#filterDateFrom').val(today);
     $('#filterDateTo').val(today);
     loadData();
+
+    $('#editWorkLogSelect').on('change', onWorkLogSelectChange);
+    $('#editDate').on('change', function() {
+        loadAvailableWorkLogs();
+    });
+    $('#editModal').on('hidden.bs.modal', function() {
+        stopAutoSave();
+    });
 });
 </script>
 {% endblock %}
