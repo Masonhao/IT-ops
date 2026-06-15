@@ -2023,6 +2023,36 @@ def get_reports_list():
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
     user_id = request.args.get('user_id')
+    # 周报/月报的 report_date 存储的是周一或月中某一天；
+    # 前端传入的 date_from/date_to 应理解为"该日期所在周/月的报告"，需做语义扩展。
+    if report_type == 'weekly' and (date_from or date_to):
+        try:
+            from datetime import datetime as _dt, timedelta as _td
+            if date_from:
+                d = _dt.strptime(date_from, '%Y-%m-%d').date()
+                # 该日期所在周的周一（weekday: Mon=0..Sun=6）
+                monday = d - _td(days=d.weekday())
+                date_from = monday.isoformat()
+            if date_to:
+                d = _dt.strptime(date_to, '%Y-%m-%d').date()
+                monday = d - _td(days=d.weekday())
+                sunday = monday + _td(days=6)
+                date_to = sunday.isoformat()
+        except Exception:
+            pass
+    elif report_type == 'monthly' and (date_from or date_to):
+        try:
+            from datetime import datetime as _dt
+            import calendar as _cal
+            if date_from:
+                d = _dt.strptime(date_from, '%Y-%m-%d').date()
+                date_from = d.replace(day=1).isoformat()
+            if date_to:
+                d = _dt.strptime(date_to, '%Y-%m-%d').date()
+                last_day = _cal.monthrange(d.year, d.month)[1]
+                date_to = d.replace(day=last_day).isoformat()
+        except Exception:
+            pass
     if date_from:
         conditions.append('r.report_date >= ?')
         params.append(date_from)

@@ -338,9 +338,12 @@ function deleteData(id) {
 }
 
 $(function() {
-    const today = new Date().toISOString().slice(0,10);
-    $('#filterWeekFrom').val(today);
-    $('#filterWeekTo').val(today);
+    // 周报 report_date 存的是该周周一，筛选区间默认覆盖最近3个月，避免上周/上上周的周报查不到
+    const today = new Date();
+    const threeMonthsAgo = new Date(today);
+    threeMonthsAgo.setMonth(today.getMonth() - 3);
+    $('#filterWeekFrom').val(threeMonthsAgo.toISOString().slice(0,10));
+    $('#filterWeekTo').val(today.toISOString().slice(0,10));
     loadData();
 });
 </script>

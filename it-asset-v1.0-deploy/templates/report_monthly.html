@@ -167,11 +167,12 @@ function deleteData(id) {
        .fail(function(xhr) { showToast(xhr.responseJSON?.error || '删除失败', 'danger'); });
 }
 $(function() {
+    // 月报 report_date 存的是月内某一天，筛选区间默认覆盖最近3个月，避免上上月月报查不到
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
-    const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
-    $('#filterMonthFrom').val(firstDay);
-    $('#filterMonthTo').val(lastDay);
+    const firstDay = new Date(now.getFullYear(), now.getMonth()-2, 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0);
+    $('#filterMonthFrom').val(firstDay.toISOString().slice(0,10));
+    $('#filterMonthTo').val(lastDay.toISOString().slice(0,10));
     loadData();
 });
 </script>
